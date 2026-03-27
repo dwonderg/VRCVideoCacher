@@ -2,15 +2,41 @@
 
 ![Header Banner](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4296960/d1bac93e4abb00108cda2137260b76a25bcffea4/header.jpg)
 
-[![Wiki](https://img.shields.io/badge/Wiki-Info-green)](https://github.com/EllyVR/VRCVideoCacher/wiki)
-[![Steam Download](https://img.shields.io/badge/Steam-Download-blue?logo=steam)](https://store.steampowered.com/app/4296960)
-[![Github Download](https://img.shields.io/badge/Github-Download-blue?logo=github)](https://github.com/EllyVR/VRCVideoCacher/releases/latest)
-[![Discord Server](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord)](https://discord.gg/t6x6p6Tzs)
 
 <hr>
 </div>
 
 **Language:** **English** | [日本語](./README_ja-JP.md) | [Magyar](./README_hu-HU.md) | [한국어](./README_ko-KR.md)
+
+### Download
+
+- [Windows — VRCVideoCacher.exe](https://github.com/dwonderg/VRCVideoCacher/releases/latest/download/VRCVideoCacher.exe)
+- [Linux — VRCVideoCacher](https://github.com/dwonderg/VRCVideoCacher/releases/latest/download/VRCVideoCacher)
+
+---
+
+### Fork changes (vs [EllyVR/VRCVideoCacher](https://github.com/EllyVR/VRCVideoCacher))
+
+This fork adds settings under **Cache Settings** to manage bandwidth when VRChat is actively streaming a video.
+
+#### Pause cache downloads while streaming 
+When set to a non-zero value (e.g. 120), cache downloads are paused whenever VRChat requests a streaming URL, and only resume after that many seconds of no new stream requests.
+
+**Pause/resume**
+- For YouTube downloads, the yt-dlp process is killed and restarted with `-c` (`--continue`). yt-dlp writes `.part` files while downloading; YouTube's CDN supports HTTP range requests so it picks up exactly where it left off.
+- For direct downloads (PyPyDance, VRDancing), the HTTP stream is cancelled via `CancellationToken` and resumed using an HTTP `Range: bytes=X-` header, appending to the partial file.
+
+**Limitation:** A looping video or a long video playing past the idle window - For those cases, use the rate limit below.
+
+#### Cache download speed limit
+
+Caps the bandwidth used by cache downloads in MB/s. Set to 0 for unlimited.
+
+- For YouTube downloads, this passes `--limit-rate XM` directly to yt-dlp.
+- For direct downloads, a manual throttle is applied to the HTTP stream copy.
+
+**Recommended usage:** Set the idle window to 120–300 seconds to handle the common case of someone switching videos or queuing songs and set the rate limit as a safety net for long-running playback.
+---
 
 ### Wiki
 - [Launch Options](https://github.com/EllyVR/VRCVideoCacher/wiki/Launch-Options)
