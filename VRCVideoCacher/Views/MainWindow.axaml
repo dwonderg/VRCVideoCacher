@@ -13,9 +13,24 @@
         MinWidth="800" MinHeight="500"
         WindowStartupLocation="CenterScreen">
 
-    <Grid RowDefinitions="*, Auto">
+    <Grid RowDefinitions="Auto, *, Auto">
+        <!-- Update Banner -->
+        <Border Grid.Row="0" Background="#2d7d46" Padding="10,8"
+                IsVisible="{Binding IsUpdateAvailable}">
+            <Grid ColumnDefinitions="*, Auto, Auto">
+                <TextBlock Grid.Column="0" Text="{Binding UpdateVersionText}"
+                           VerticalAlignment="Center" Foreground="White" FontWeight="Bold"/>
+                <Button Grid.Column="1" Content="Update Now" Margin="10,0"
+                        Command="{Binding ApplyUpdateCommand}"
+                        Background="#1b5e30" Foreground="White" Padding="12,4"/>
+                <Button Grid.Column="2" Content="Dismiss"
+                        Command="{Binding DismissUpdateCommand}"
+                        Background="Transparent" Foreground="White" Padding="8,4"/>
+            </Grid>
+        </Border>
+
         <!-- Main Content -->
-        <Grid Grid.Row="0" ColumnDefinitions="200, *">
+        <Grid Grid.Row="1" ColumnDefinitions="200, *">
             <!-- Sidebar Navigation -->
             <Border Grid.Column="0" Background="#1a1a1a" Padding="10">
                 <StackPanel Spacing="5">
@@ -124,7 +139,7 @@
         </Grid>
 
         <!-- Status Bar -->
-        <Border Grid.Row="1" Background="#252525" Padding="10,5">
+        <Border Grid.Row="2" Background="#252525" Padding="10,5">
             <Grid ColumnDefinitions="*, Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusText}" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" Text="{Binding CacheStatusText}" VerticalAlignment="Center"/>

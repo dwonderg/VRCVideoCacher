@@ -4,9 +4,8 @@ namespace VRCVideoCacher.Views;
 
 public partial class AboutView : UserControl
 {
-    private const string GithubUrl = "https://github.com/EllyVR/VRCVideoCacher";
+    private const string GithubUrl = "https://github.com/codeyumx/VRCVideoCacherPlus";
     private const string DiscordUrl = "https://discord.gg/t6x6p6Tzs";
-    private const string SteamUrl = "https://store.steampowered.com/app/4296960/";
 
     public AboutView()
     {
@@ -22,11 +21,6 @@ public partial class AboutView : UserControl
     private void OnGitHubClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         OpenUrl(GithubUrl);
-    }
-
-    private void OnSteamClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-    {
-        OpenUrl(SteamUrl);
     }
 
     private void OnGitHubIssueClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

@@ -7,6 +7,7 @@ using VRCVideoCacher.Database;
 using VRCVideoCacher.Database.Models;
 using VRCVideoCacher.Models;
 using VRCVideoCacher.Services;
+using VRCVideoCacher.YTDL;
 
 namespace VRCVideoCacher.ViewModels;
 
@@ -49,6 +50,12 @@ public partial class HistoryItemViewModel : ViewModelBase
 
     public string? ThumbnailUrl => _thumbnailUrl;
 
+    [ObservableProperty]
+    private bool _isCached;
+
+    [ObservableProperty]
+    private bool _isInQueue;
+
     public HistoryItemViewModel(History history, VideoInfoCache? meta)
     {
         Timestamp = history.Timestamp.ToLocalTime();
@@ -57,6 +64,24 @@ public partial class HistoryItemViewModel : ViewModelBase
         Type = history.Type;
         _title = meta?.Title;
         Author = meta?.Author;
+        UpdateStatus();
+    }
+
+    public void UpdateStatus()
+    {
+        if (Id == null) return;
+
+        // Check if video is cached
+        var cachedAssets = CacheManager.GetCachedAssets();
+        IsCached = cachedAssets.Keys.Any(k => Path.GetFileNameWithoutExtension(k) == Id);
+
+        // Check if video is in download queue
+        var queue = VideoDownloader.GetQueueSnapshot();
+        var current = VideoDownloader.GetCurrentDownload();
+        var paused = VideoDownloader.GetPausedDownload();
+        IsInQueue = queue.Any(q => q.VideoId == Id)
+                    || current?.VideoId == Id
+                    || paused?.VideoId == Id;
     }
 
     public async Task LoadMetadataAsync()
@@ -123,11 +148,23 @@ public partial class HistoryViewModel : ViewModelBase
     {
         DatabaseManager.OnPlayHistoryAdded += () => Avalonia.Threading.Dispatcher.UIThread.Post(Refresh);
 
-
         // Causes infinite loop because we update cache inside LoadMetadataAsync, which triggers this event again.
-        DatabaseManager.OnVideoInfoCacheUpdated += () => Refresh();
+        DatabaseManager.OnVideoInfoCacheUpdated += () => Avalonia.Threading.Dispatcher.UIThread.Post(Refresh);
+
+        // Update status icons when queue or cache changes
+        VideoDownloader.OnQueueChanged += UpdateItemStatuses;
+        CacheManager.OnCacheChanged += (_, _) => UpdateItemStatuses();
 
         Refresh();
+    }
+
+    private void UpdateItemStatuses()
+    {
+        Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (var item in HistoryItems)
+                item.UpdateStatus();
+        });
     }
 
     private bool _isRefreshing;
@@ -157,6 +194,7 @@ public partial class HistoryViewModel : ViewModelBase
             {
                 await item.LoadMetadataAsync();
             }
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => _isRefreshing = false);
         });
     }
 }

@@ -75,27 +75,48 @@ public class CacheManager
             return;
 
         var recentPlayHistory = DatabaseManager.GetPlayHistory();
-        var oldestFiles = CachedAssets.OrderBy(x => x.Value.LastModified).ToList();
-        while (cacheSize >= maxCacheSize && oldestFiles.Count > 0)
+        var watchStatsMap = DatabaseManager.GetAllVideoWatchStats();
+
+        // Score each cached video — higher score = more valuable = delete last
+        var scored = CachedAssets.Select(kvp =>
         {
-            var oldestFile = oldestFiles.First();
-            var filePath = Path.Join(CachePath, oldestFile.Value.FileName);
+            var videoId = Path.GetFileNameWithoutExtension(kvp.Value.FileName);
+            watchStatsMap.TryGetValue(videoId, out var stats);
+
+            var watchCount = stats?.WatchCount ?? 0;
+            var lastWatched = stats?.LastWatchedAt ?? kvp.Value.LastModified;
+            var daysSinceWatched = (DateTime.UtcNow - lastWatched).TotalDays;
+
+            // Score formula: watch frequency rewards, recency rewards, large files slightly penalized
+            var score = watchCount * 10.0
+                        + Math.Max(0, 30.0 - daysSinceWatched) // bonus for recently watched (within 30 days)
+                        - kvp.Value.Size / (1024.0 * 1024.0 * 1024.0); // slight penalty per GB
+
+            return new { Key = kvp.Key, Cache = kvp.Value, VideoId = videoId, Score = score };
+        })
+        .OrderBy(x => x.Score) // lowest score = least valuable = delete first
+        .ToList();
+
+        foreach (var item in scored)
+        {
+            if (cacheSize < maxCacheSize)
+                break;
+
+            var filePath = Path.Join(CachePath, item.Cache.FileName);
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
-                cacheSize -= oldestFile.Value.Size;
+                cacheSize -= item.Cache.Size;
 
                 // delete thumbnail if not in recent history
-                var videoId = Path.GetFileNameWithoutExtension(oldestFile.Value.FileName);
-                if (recentPlayHistory.All(h => h.Id != videoId))
+                if (recentPlayHistory.All(h => h.Id != item.VideoId))
                 {
-                    var thumbnailPath = ThumbnailManager.GetThumbnailPath(videoId);
+                    var thumbnailPath = ThumbnailManager.GetThumbnailPath(item.VideoId);
                     if (File.Exists(thumbnailPath))
                         File.Delete(thumbnailPath);
                 }
             }
-            CachedAssets.TryRemove(oldestFile.Key, out _);
-            oldestFiles.RemoveAt(0);
+            CachedAssets.TryRemove(item.Key, out _);
         }
     }
 

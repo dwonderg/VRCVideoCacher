@@ -1,6 +1,7 @@
 using CodingSeb.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VRCVideoCacher.Models;
 using VRCVideoCacher.Utils;
 
 namespace VRCVideoCacher.ViewModels;
@@ -17,7 +18,15 @@ public partial class MainWindowViewModel : ViewModelBase
     private string _cacheStatusText = "Cache: 0 B";
 
     [ObservableProperty]
-    private string _title = $"VRCVideoCacher v{Program.Version}";
+    private string _title = $"VRCVideoCacherPlus v{Program.Version}";
+
+    [ObservableProperty]
+    private bool _isUpdateAvailable;
+
+    [ObservableProperty]
+    private string _updateVersionText = "";
+
+    private GitHubRelease? _pendingRelease;
 
     public DashboardViewModel Dashboard { get; }
     public SettingsViewModel Settings { get; }
@@ -94,4 +103,24 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [RelayCommand]
     public void NavigateToAbout() => CurrentView = About;
+
+    public void ShowUpdate(UpdateInfo info)
+    {
+        _pendingRelease = info.Release;
+        UpdateVersionText = $"Version {info.Version} is available!";
+        IsUpdateAvailable = true;
+    }
+
+    [RelayCommand]
+    private async Task ApplyUpdate()
+    {
+        if (_pendingRelease == null) return;
+        await Updater.ApplyUpdate(_pendingRelease);
+    }
+
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        IsUpdateAvailable = false;
+    }
 }

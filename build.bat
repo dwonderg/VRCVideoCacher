@@ -1,5 +1,7 @@
 @echo off
 if exist Build rmdir /s /q Build
+if exist VRCVideoCacher\bin rmdir /s /q VRCVideoCacher\bin
+if exist VRCVideoCacher\obj rmdir /s /q VRCVideoCacher\obj
 mkdir Build
 
 echo Building for Windows x64...

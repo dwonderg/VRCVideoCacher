@@ -10,7 +10,7 @@ namespace VRCVideoCacher;
 
 public class Updater
 {
-    private const string UpdateUrl = "https://api.github.com/repos/EllyVR/VRCVideoCacher/releases/latest";
+    private const string UpdateUrl = "https://api.github.com/repos/codeyumx/VRCVideoCacherPlus/releases/latest";
     private static readonly HttpClient HttpClient = new()
     {
         DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher.Updater" } }
@@ -21,50 +21,56 @@ public class Updater
     private static readonly string BackupFilePath = Path.Join(Program.CurrentProcessPath, "VRCVideoCacher.bkp");
     private static readonly string TempFilePath = Path.Join(Program.CurrentProcessPath, OperatingSystem.IsWindows() ? "VRCVideoCacher.Temp.exe" : "VRCVideoCacher.Temp");
 
-    public static async Task CheckForUpdates()
+    public static async Task<UpdateInfo?> CheckForUpdates()
     {
-#if STEAMRELEASE
-        return;
-#endif
-        Log.Information("Checking for updates...");
-        var isDebug = false;
-#if DEBUG
-        isDebug = true;
-#endif
-        if (Program.Version.Contains("-dev") || isDebug)
+#if STEAMRELEASE || DEBUG
+        Log.Information("Skipping update check (Steam/dev build).");
+        return null;
+#else
+        if (Program.Version.Contains("-dev"))
         {
             Log.Information("Running in dev mode. Skipping update check.");
-            return;
+            return null;
         }
+
+        Log.Information("Checking for updates...");
         using var response = await HttpClient.GetAsync(UpdateUrl);
         if (!response.IsSuccessStatusCode)
         {
             Log.Warning("Failed to check for updates.");
-            return;
+            return null;
         }
         var data = await response.Content.ReadAsStringAsync();
         var latestRelease = JsonConvert.DeserializeObject<GitHubRelease>(data);
         if (latestRelease == null)
         {
             Console.Error.WriteLine("Failed to parse update response.");
-            return;
+            return null;
         }
-        var latestVersion = SemVersion.Parse(latestRelease.tag_name);
-        var currentVersion = SemVersion.Parse(Program.Version);
+        if (!SemVersion.TryParse(latestRelease.tag_name, SemVersionStyles.Any, out var latestVersion))
+        {
+            Log.Warning("Failed to parse latest release version: {Tag}", latestRelease.tag_name);
+            return null;
+        }
+        if (!SemVersion.TryParse(Program.Version, SemVersionStyles.Any, out var currentVersion))
+        {
+            Log.Warning("Failed to parse current version: {Version}", Program.Version);
+            return null;
+        }
         Log.Information("Latest release: {Latest}, Installed Version: {Installed}", latestVersion, currentVersion);
         if (SemVersion.ComparePrecedence(currentVersion, latestVersion) >= 0)
         {
             Log.Information("No updates available.");
-            return;
+            return null;
         }
         Log.Information("Update available: {Version}", latestVersion);
-        if (ConfigManager.Config.AutoUpdateVrcVideoCacher)
-        {
-            await UpdateAsync(latestRelease);
-            return;
-        }
-        Log.Information(
-            "Auto Update is disabled. Please update manually from the releases page. https://github.com/EllyVR/VRCVideoCacher/releases");
+        return new UpdateInfo(latestVersion.ToString(), latestRelease);
+#endif
+    }
+
+    public static async Task ApplyUpdate(GitHubRelease release)
+    {
+        await UpdateAsync(release);
     }
 
     public static void Cleanup()
@@ -232,3 +238,5 @@ public class Updater
         return true;
     }
 }
+
+public record UpdateInfo(string Version, GitHubRelease Release);

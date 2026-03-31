@@ -59,13 +59,17 @@ public partial class App : Application
             // Avoid duplicate validations from both Avalonia and the CommunityToolkit
             BindingPlugins.DataValidators.RemoveAt(0);
 
+            var mainVm = new MainWindowViewModel();
             MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel()
+                DataContext = mainVm
             };
 
             desktop.MainWindow = MainWindow;
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
+            // Check for updates and show banner if available
+            _ = CheckForUpdatesAsync(mainVm);
 
             // Set up tray icon
             SetupTrayIcon(desktop);
@@ -77,7 +81,7 @@ public partial class App : Application
                     return;
 
                 e.Cancel = true;
-                MainWindow.Hide();
+                HideToTray();
             };
  
             // Minimize at startup if needed
@@ -146,6 +150,15 @@ public partial class App : Application
         }
     }
 
+    private static async Task CheckForUpdatesAsync(MainWindowViewModel vm)
+    {
+        var update = await Updater.CheckForUpdates();
+        if (update != null)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => vm.ShowUpdate(update));
+        }
+    }
+
     private bool _isExiting;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private NativeMenuItem? _showItem;
@@ -166,7 +179,7 @@ public partial class App : Application
             msg == WmSysCommand &&
             (wParam.ToInt32() & 0xFFF0) == ScClose)
         {
-            MainWindow?.Hide();
+            HideToTray();
             handled = true;
             return IntPtr.Zero;
         }
@@ -256,13 +269,29 @@ public partial class App : Application
 
         _trayIcon = new TrayIcon
         {
-            ToolTipText = "VRCVideoCacher",
+            ToolTipText = "VRCVideoCacherPlus",
             Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://VRCVideoCacher/Assets/icon.ico"))),
             Menu = menu,
             IsVisible = true
         };
 
         _trayIcon.Clicked += (_, _) => ShowMainWindow();
+    }
+
+    private async void HideToTray()
+    {
+        if (!ConfigManager.Config.HasShownTrayNotice && MainWindow != null)
+        {
+            ConfigManager.Config.HasShownTrayNotice = true;
+            ConfigManager.TrySaveConfig();
+
+            var notice = new PopupWindow(
+                Loc.Tr("TrayMinimizeNotice",
+                    "VRCVideoCacherPlus is still running in the system tray. You can change this behavior in Settings."));
+            await notice.ShowDialog(MainWindow);
+        }
+
+        MainWindow?.Hide();
     }
 
     private void ShowMainWindow()

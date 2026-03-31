@@ -1,68 +1,91 @@
-using System.Collections.Concurrent;
-
 namespace VRCVideoCacher.YTDL;
 
 /// <summary>
-/// Tracks videos currently being streamed by VRChat so that cache downloads
-/// can be deferred to avoid bandwidth contention.
+/// Tracks active video streams being served to VRChat.
+/// Downloads are deferred until all known streams have likely finished
+/// (based on video duration) plus the configured idle buffer.
 /// </summary>
 public static class ActiveStreamTracker
 {
-    private static readonly ConcurrentDictionary<string, DateTime> ActiveStreams = new();
+    /// <summary>
+    /// Fired on the thread pool whenever a new streaming URL is served.
+    /// VideoDownloader subscribes to this to pause active downloads immediately.
+    /// </summary>
+    public static event Action? OnStreamingActivity;
+
+    private static readonly object Lock = new();
 
     /// <summary>
-    /// Mark a video as actively streaming. Called when a non-cached URL is
-    /// returned to VRChat for direct playback.
+    /// Tracks the expected end time of each active stream by video ID.
+    /// If no duration is known, the entry stores just the start time
+    /// and the idle buffer alone governs the delay.
     /// </summary>
-    public static void MarkStreaming(string videoId)
-    {
-        ActiveStreams[videoId] = DateTime.UtcNow;
-    }
+    private static readonly Dictionary<string, DateTime> _expectedEndTimes = new();
 
     /// <summary>
-    /// Clear the streaming flag for a video. Called when a new video request
-    /// comes in (the previous video is no longer streaming).
+    /// Fallback: the last time any activity was recorded, used when
+    /// duration is unknown.
     /// </summary>
-    public static void ClearStreaming(string videoId)
-    {
-        ActiveStreams.TryRemove(videoId, out _);
-    }
+    private static DateTime _lastActivityAt = DateTime.MinValue;
+    private static bool _hasActivity;
 
     /// <summary>
-    /// Clear all active streams. Called when a new video starts playing,
-    /// since VRChat only plays one video at a time.
+    /// Record that a video URL was just served to VRChat.
     /// </summary>
-    public static void ClearAll()
+    /// <param name="videoId">The video ID being streamed.</param>
+    /// <param name="durationSeconds">
+    /// Known duration of the video in seconds, or null if unknown.
+    /// </param>
+    public static void RecordActivity(string? videoId = null, double? durationSeconds = null)
     {
-        ActiveStreams.Clear();
-    }
-
-    /// <summary>
-    /// Returns true if any video is currently being streamed.
-    /// Entries older than 30 minutes are considered stale and ignored.
-    /// </summary>
-    public static bool IsAnyStreaming()
-    {
-        CleanupStale();
-        return !ActiveStreams.IsEmpty;
-    }
-
-    /// <summary>
-    /// Returns true if the specific video is currently being streamed.
-    /// </summary>
-    public static bool IsStreaming(string videoId)
-    {
-        CleanupStale();
-        return ActiveStreams.ContainsKey(videoId);
-    }
-
-    private static void CleanupStale()
-    {
-        var cutoff = DateTime.UtcNow.AddMinutes(-30);
-        foreach (var kvp in ActiveStreams)
+        lock (Lock)
         {
-            if (kvp.Value < cutoff)
-                ActiveStreams.TryRemove(kvp.Key, out _);
+            _lastActivityAt = DateTime.UtcNow;
+            _hasActivity = true;
+
+            if (!string.IsNullOrEmpty(videoId))
+            {
+                var expectedEnd = durationSeconds > 0
+                    ? DateTime.UtcNow.AddSeconds(durationSeconds.Value)
+                    : DateTime.UtcNow;
+
+                // Keep the latest (longest) expected end time for this video
+                if (!_expectedEndTimes.TryGetValue(videoId, out var existing) || expectedEnd > existing)
+                    _expectedEndTimes[videoId] = expectedEnd;
+            }
+
+            // Clean up entries that have long since passed (> 1 hour stale)
+            var cutoff = DateTime.UtcNow.AddHours(-1);
+            var stale = _expectedEndTimes.Where(kv => kv.Value < cutoff).Select(kv => kv.Key).ToList();
+            foreach (var key in stale)
+                _expectedEndTimes.Remove(key);
+        }
+        Task.Run(() => OnStreamingActivity?.Invoke());
+    }
+
+    /// <summary>
+    /// Returns true if all known streams have likely finished playing
+    /// and the idle buffer has elapsed.
+    /// </summary>
+    public static bool IsIdle(int idleSeconds)
+    {
+        if (idleSeconds <= 0) return true;
+        lock (Lock)
+        {
+            if (!_hasActivity) return true;
+
+            var now = DateTime.UtcNow;
+
+            // Find the latest expected end time across all active streams
+            var latestEnd = _lastActivityAt;
+            foreach (var endTime in _expectedEndTimes.Values)
+            {
+                if (endTime > latestEnd)
+                    latestEnd = endTime;
+            }
+
+            // Idle = we're past the longest video's expected end + the buffer
+            return (now - latestEnd).TotalSeconds >= idleSeconds;
         }
     }
 }

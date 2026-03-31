@@ -123,16 +123,31 @@
                         <CheckBox IsChecked="{Binding CacheVRDancing}" Content="{loc:Tr CacheVRDancingVideos}"/>
                         <CheckBox IsChecked="{Binding CacheOnly}" Content="{loc:Tr OnlyServeCachedVideos}"/>
 
-                        <CheckBox IsChecked="{Binding DeferCacheDownloads}"
-                                  Content="{loc:Tr DeferCacheDownloads}"
-                                  ToolTip.Tip="{loc:Tr DeferCacheDownloadsTooltip}"/>
+                        <StackPanel Spacing="5">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ToggleSwitch IsChecked="{Binding IsDelayEnabled}"
+                                              OnContent="{loc:Tr CacheDownloadIdleSeconds}"
+                                              OffContent="{loc:Tr CacheDownloadIdleSeconds}"
+                                              ToolTip.Tip="{loc:Tr CacheDownloadIdleSecondsTooltip}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding CacheDownloadIdleSeconds}"
+                                           Minimum="5" Maximum="3600" Increment="30"
+                                           Watermark="30"
+                                           IsVisible="{Binding IsDelayEnabled}"
+                                           ToolTip.Tip="{loc:Tr CacheDownloadIdleSecondsTooltip}"/>
+                        </StackPanel>
 
                         <StackPanel Spacing="5">
-                            <TextBlock Text="{loc:Tr CacheDownloadRateLimit}"
-                                       ToolTip.Tip="{loc:Tr CacheDownloadRateLimitTooltip}"/>
-                            <NumericUpDown Value="{Binding CacheDownloadRateLimitKBs}"
-                                           Minimum="0" Maximum="100000" Increment="256"
-                                           Watermark="0"
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <ToggleSwitch IsChecked="{Binding IsRateLimitEnabled}"
+                                              OnContent="{loc:Tr CacheDownloadRateLimit}"
+                                              OffContent="{loc:Tr CacheDownloadRateLimit}"
+                                              ToolTip.Tip="{loc:Tr CacheDownloadRateLimitTooltip}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding CacheDownloadRateLimitMBs}"
+                                           Minimum="1" Maximum="1000" Increment="1"
+                                           Watermark="5"
+                                           IsVisible="{Binding IsRateLimitEnabled}"
                                            ToolTip.Tip="{loc:Tr CacheDownloadRateLimitTooltip}"/>
                         </StackPanel>
                     </StackPanel>

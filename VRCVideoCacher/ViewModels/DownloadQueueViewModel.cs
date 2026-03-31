@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VRCVideoCacher.Database;
 using VRCVideoCacher.Models;
 using VRCVideoCacher.YTDL;
 
@@ -9,10 +10,12 @@ namespace VRCVideoCacher.ViewModels;
 
 public partial class DownloadItemViewModel : ViewModelBase
 {
+    public int DbKey { get; init; }
     public string VideoUrl { get; init; } = string.Empty;
     public string VideoId { get; init; } = string.Empty;
     public string UrlType { get; init; } = string.Empty;
     public string Format { get; init; } = string.Empty;
+    public string QueuedAt { get; init; } = string.Empty;
 }
 
 public partial class DownloadQueueViewModel : ViewModelBase
@@ -29,6 +32,12 @@ public partial class DownloadQueueViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
+    [ObservableProperty]
+    private double _downloadProgress;
+
+    [ObservableProperty]
+    private bool _isDownloading;
+
     public ObservableCollection<DownloadItemViewModel> QueuedDownloads { get; } = [];
 
     public DownloadQueueViewModel()
@@ -37,7 +46,10 @@ public partial class DownloadQueueViewModel : ViewModelBase
 
         VideoDownloader.OnDownloadStarted += OnDownloadStarted;
         VideoDownloader.OnDownloadCompleted += OnDownloadCompleted;
+        VideoDownloader.OnDownloadPaused += OnDownloadPaused;
         VideoDownloader.OnQueueChanged += OnQueueChanged;
+        VideoDownloader.OnDownloadProgress += OnDownloadProgressUpdate;
+        DatabaseManager.OnPendingDownloadsChanged += OnQueueChanged;
     }
 
     private void OnDownloadStarted(VideoInfo video)
@@ -52,6 +64,8 @@ public partial class DownloadQueueViewModel : ViewModelBase
                 Format = video.DownloadFormat.ToString()
             };
             CurrentStatus = $"Downloading {video.VideoId}...";
+            DownloadProgress = 0;
+            IsDownloading = true;
             RefreshQueue();
         });
     }
@@ -65,6 +79,32 @@ public partial class DownloadQueueViewModel : ViewModelBase
             StatusMessage = success
                 ? $"Downloaded: {video.VideoId}"
                 : $"Failed to download: {video.VideoId}";
+            DownloadProgress = 0;
+            IsDownloading = false;
+            RefreshQueue();
+        });
+    }
+
+    private DateTime _lastProgressUpdate;
+
+    private void OnDownloadProgressUpdate(double percent)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastProgressUpdate).TotalMilliseconds < 250 && percent < 99.9)
+            return;
+        _lastProgressUpdate = now;
+
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            DownloadProgress = percent;
+        });
+    }
+
+    private void OnDownloadPaused(VideoInfo video)
+    {
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            CurrentStatus = $"Paused — waiting for stream to finish";
             RefreshQueue();
         });
     }
@@ -79,19 +119,22 @@ public partial class DownloadQueueViewModel : ViewModelBase
     {
         QueuedDownloads.Clear();
 
-        var queue = VideoDownloader.GetQueueSnapshot();
-        foreach (var video in queue)
+        var pending = VideoDownloader.GetQueueSnapshot();
+        foreach (var item in pending)
         {
             QueuedDownloads.Add(new DownloadItemViewModel
             {
-                VideoUrl = video.VideoUrl,
-                VideoId = video.VideoId,
-                UrlType = video.UrlType.ToString(),
-                Format = video.DownloadFormat.ToString()
+                DbKey = item.Key,
+                VideoUrl = item.VideoUrl,
+                VideoId = item.VideoId,
+                UrlType = item.UrlType.ToString(),
+                Format = item.DownloadFormat.ToString(),
+                QueuedAt = item.QueuedAt.ToLocalTime().ToString("g")
             });
         }
 
-        var current = VideoDownloader.GetCurrentDownload();
+        var state = VideoDownloader.GetDownloadState();
+        var current = VideoDownloader.GetCurrentDownload() ?? VideoDownloader.GetPausedDownload();
         if (current != null)
         {
             CurrentDownload = new DownloadItemViewModel
@@ -101,16 +144,37 @@ public partial class DownloadQueueViewModel : ViewModelBase
                 UrlType = current.UrlType.ToString(),
                 Format = current.DownloadFormat.ToString()
             };
-            CurrentStatus = $"Downloading {current.VideoId}...";
+            CurrentStatus = state switch
+            {
+                DownloadState.Paused => "Paused — waiting for stream to finish",
+                DownloadState.WaitingForIdle => "Waiting for streaming to stop...",
+                _ => $"Downloading {current.VideoId}..."
+            };
         }
         else
         {
             CurrentDownload = null;
             if (QueuedDownloads.Count == 0)
-            {
                 CurrentStatus = "Idle";
-            }
+            else if (state == DownloadState.WaitingForIdle)
+                CurrentStatus = "Waiting for streaming to stop...";
+            else
+                CurrentStatus = $"{QueuedDownloads.Count} pending";
         }
+    }
+
+    [RelayCommand]
+    private void RemoveFromQueue(DownloadItemViewModel? item)
+    {
+        if (item == null) return;
+
+        if (item.DbKey > 0)
+            VideoDownloader.RemoveFromQueueByKey(item.DbKey);
+        else
+            VideoDownloader.RemoveFromQueue(item.VideoId, Enum.Parse<DownloadFormat>(item.Format));
+
+        StatusMessage = $"Removed: {item.VideoId}";
+        RefreshQueue();
     }
 
     [RelayCommand]
@@ -122,24 +186,66 @@ public partial class DownloadQueueViewModel : ViewModelBase
             return;
         }
 
-        try
+        var urls = ManualUrl.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(u => u.Trim())
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .ToList();
+
+        var added = 0;
+        var failed = 0;
+        var errors = new List<string>();
+
+        foreach (var url in urls)
         {
-            var videoInfo = await VideoId.GetVideoId(ManualUrl, true);
-            if (videoInfo != null)
+            try
             {
-                VideoDownloader.QueueDownload(videoInfo);
-                StatusMessage = $"Added to queue: {videoInfo.VideoId}";
-                ManualUrl = string.Empty;
+                if (VideoId.IsYouTubePlaylist(url))
+                {
+                    StatusMessage = "Extracting playlist...";
+                    var playlistVideos = await VideoId.GetPlaylistVideoInfos(url, true);
+                    if (playlistVideos.Count == 0)
+                    {
+                        errors.Add($"No videos found in playlist: {url}");
+                        failed++;
+                        continue;
+                    }
+                    foreach (var video in playlistVideos)
+                    {
+                        VideoDownloader.QueueDownload(video);
+                        added++;
+                    }
+                }
+                else
+                {
+                    var videoInfo = await VideoId.GetVideoId(url, true);
+                    if (videoInfo != null)
+                    {
+                        VideoDownloader.QueueDownload(videoInfo);
+                        added++;
+                    }
+                    else
+                    {
+                        errors.Add($"Could not parse: {url}");
+                        failed++;
+                    }
+                }
             }
-            else
+            catch (Exception ex)
             {
-                StatusMessage = "Could not parse URL";
+                errors.Add($"Error with {url}: {ex.Message}");
+                failed++;
             }
         }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex}";
-        }
+
+        if (added > 0)
+            ManualUrl = string.Empty;
+
+        if (failed == 0)
+            StatusMessage = $"Added {added} video(s) to queue";
+        else if (added == 0)
+            StatusMessage = string.Join("; ", errors);
+        else
+            StatusMessage = $"Added {added} video(s), {failed} failed: {string.Join("; ", errors)}";
     }
 
     [RelayCommand]

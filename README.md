@@ -37,6 +37,12 @@ You can limit how fast cache downloads run (in MB/s). Set to 0 for unlimited.
 
 You can manually queue videos for caching from the **Downloads** tab. Paste one or more YouTube URLs (one per line) into the text box and click **Add**. YouTube playlists are also supported — paste the playlist URL and all videos in the playlist will be added to the queue automatically.
 
+#### Other improvements
+
+- Update banner — shows a banner when a new version is available
+- Better log entries in the log viewer
+- Watch history with stats tracking intelligently saves cache space, keeping your favorite videos
+
 ---
 
 ### Wiki

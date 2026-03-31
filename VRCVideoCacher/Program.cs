@@ -175,8 +175,11 @@ internal sealed class Program
         
         OpenVRService.Start(DataPath);
 
-        // Start the UI
+        // Start the UI — blocks until Avalonia shuts down
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+
+        // Force-exit so background threads (web server, download loop, OpenVR) don't keep the process alive
+        Environment.Exit(0);
     }
 
     private static void InitializeLogger()
@@ -207,7 +210,7 @@ internal sealed class Program
 
     private static async Task InitVrcVideoCacher()
     {
-        try { Console.Title = $"VRCVideoCacher v{Version}{AdminCheck.GetAdminTitleWarning()}"; } catch { /* GUI mode, no console */ }
+        try { Console.Title = $"VRCVideoCacherPlus v{Version}{AdminCheck.GetAdminTitleWarning()}"; } catch { /* GUI mode, no console */ }
 
         Logger.Information("VRCVideoCacher version {Version} created by {Elly}, {Natsumi}, {Haxy}, {Hauskaz}, {DubyaDude}", Version, Creator_Elly, Creator_Natsumi, Creator_Haxy, Creator_Hauskaz, Creator_DubyaDude);
 
@@ -217,7 +220,6 @@ internal sealed class Program
         }
 
         Directory.CreateDirectory(UtilsPath);
-        await Updater.CheckForUpdates();
         Updater.Cleanup();
         if (Environment.CommandLine.Contains("--Reset"))
         {
@@ -388,6 +390,7 @@ internal sealed class Program
 
     private static void OnAppQuit()
     {
+        API.WebServer.Stop();
         FileTools.RestoreAllYtdl();
         Logger.Information("Exiting...");
     }

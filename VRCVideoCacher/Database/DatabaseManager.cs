@@ -10,7 +10,8 @@ public static class DatabaseManager
 {
     public static event Action? OnPlayHistoryAdded;
     public static event Action? OnVideoInfoCacheUpdated;
-    
+    public static event Action? OnPendingDownloadsChanged;
+
     private static readonly PooledDbContextFactory<Database> _contextFactory;
 
     static DatabaseManager()
@@ -27,8 +28,26 @@ public static class DatabaseManager
         using var db = _contextFactory.CreateDbContext();
         db.Database.EnsureCreated();
         db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS vvc_PendingDownloads (
+                Key INTEGER PRIMARY KEY AUTOINCREMENT,
+                QueuedAt TEXT NOT NULL,
+                VideoUrl TEXT NOT NULL,
+                VideoId TEXT NOT NULL,
+                UrlType INTEGER NOT NULL,
+                DownloadFormat INTEGER NOT NULL
+            )
+            """);
+
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS vvc_VideoWatchStats (
+                VideoId TEXT PRIMARY KEY NOT NULL,
+                LastWatchedAt TEXT NOT NULL,
+                WatchCount INTEGER NOT NULL DEFAULT 0
+            )
+            """);
     }
-    
+
     public static void AddPlayHistory(VideoInfo videoInfo)
     {
         var history = new History
@@ -103,5 +122,96 @@ public static class DatabaseManager
         using var db = _contextFactory.CreateDbContext();
         return db.VideoInfoCache.Find(videoId);
     }
-    
+
+    public static void UpdateVideoWatchStats(string videoId)
+    {
+        if (string.IsNullOrEmpty(videoId)) return;
+
+        using var db = _contextFactory.CreateDbContext();
+        var stats = db.VideoWatchStats.Find(videoId);
+        if (stats != null)
+        {
+            stats.WatchCount++;
+            stats.LastWatchedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            db.VideoWatchStats.Add(new VideoWatchStats
+            {
+                VideoId = videoId,
+                WatchCount = 1,
+                LastWatchedAt = DateTime.UtcNow
+            });
+        }
+        db.SaveChanges();
+    }
+
+    public static Dictionary<string, VideoWatchStats> GetAllVideoWatchStats()
+    {
+        using var db = _contextFactory.CreateDbContext();
+        return db.VideoWatchStats
+            .AsNoTracking()
+            .ToDictionary(v => v.VideoId);
+    }
+
+    // --- Pending Downloads ---
+
+    public static void AddPendingDownload(VideoInfo videoInfo)
+    {
+        using var db = _contextFactory.CreateDbContext();
+        var exists = db.PendingDownloads.Any(p =>
+            p.VideoId == videoInfo.VideoId && p.DownloadFormat == videoInfo.DownloadFormat);
+        if (exists) return;
+
+        db.PendingDownloads.Add(new PendingDownload
+        {
+            QueuedAt = DateTime.UtcNow,
+            VideoUrl = videoInfo.VideoUrl,
+            VideoId = videoInfo.VideoId,
+            UrlType = videoInfo.UrlType,
+            DownloadFormat = videoInfo.DownloadFormat
+        });
+        db.SaveChanges();
+        OnPendingDownloadsChanged?.Invoke();
+    }
+
+    public static void RemovePendingDownload(string videoId, DownloadFormat format)
+    {
+        using var db = _contextFactory.CreateDbContext();
+        var item = db.PendingDownloads.FirstOrDefault(p =>
+            p.VideoId == videoId && p.DownloadFormat == format);
+        if (item == null) return;
+
+        db.PendingDownloads.Remove(item);
+        db.SaveChanges();
+        OnPendingDownloadsChanged?.Invoke();
+    }
+
+    public static void RemovePendingDownloadByKey(int key)
+    {
+        using var db = _contextFactory.CreateDbContext();
+        var item = db.PendingDownloads.Find(key);
+        if (item == null) return;
+
+        db.PendingDownloads.Remove(item);
+        db.SaveChanges();
+        OnPendingDownloadsChanged?.Invoke();
+    }
+
+    public static List<PendingDownload> GetPendingDownloads()
+    {
+        using var db = _contextFactory.CreateDbContext();
+        return db.PendingDownloads
+            .AsNoTracking()
+            .OrderBy(p => p.QueuedAt)
+            .ToList();
+    }
+
+    public static void ClearPendingDownloads()
+    {
+        using var db = _contextFactory.CreateDbContext();
+        db.PendingDownloads.RemoveRange(db.PendingDownloads);
+        db.SaveChanges();
+        OnPendingDownloadsChanged?.Invoke();
+    }
 }

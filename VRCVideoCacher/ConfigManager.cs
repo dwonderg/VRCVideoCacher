@@ -66,7 +66,7 @@ public class ConfigManager
             return;
 
         Log.Information("Config changed, saving...");
-        File.WriteAllText(ConfigFilePath, JsonConvert.SerializeObject(Config, Formatting.Indented));
+        File.WriteAllText(ConfigFilePath, newConfig);
         Log.Information("Config saved.");
         OnConfigChanged?.Invoke();
         CacheManager.TryFlushCache();
@@ -145,8 +145,8 @@ public class ConfigModel
     public bool CachePyPyDance = false;
     public bool CacheVrDancing = false;
     public bool CacheOnly = false;
-    public bool DeferCacheDownloads = false;
-    public int CacheDownloadRateLimitKBs = 0; // 0 = unlimited
+    public int CacheDownloadIdleSeconds = 30; // 0 = disabled; downloads start after this many seconds of no streaming requests
+    public int CacheDownloadRateLimitMBs = 0; // 0 = unlimited
 
     // Cache Rules
     public string[] BlockedUrls = ["https://na2.vrdancing.club/sampleurl.mp4"];
@@ -166,4 +166,7 @@ public class ConfigModel
 
     // Localization
     public string Language = "en";
+
+    // UI state
+    public bool HasShownTrayNotice = false;
 }

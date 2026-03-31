@@ -16,7 +16,9 @@ namespace VRCVideoCacher.YTDL;
 public class VideoId
 {
     private static readonly ILogger Log = Program.Logger.ForContext<VideoId>();
-    
+    private static readonly HttpClient HttpClient = new() { DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher" } } };
+    private static readonly HashSet<string> YouTubeHosts = ["youtube.com", "youtu.be", "www.youtube.com", "m.youtube.com", "music.youtube.com"];
+
     internal static Uri? ToUri(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
 
     internal static string HashUrl(string url)
@@ -169,5 +171,103 @@ public class VideoId
 
         return new Tuple<string, bool>(output, true);
     }
-    
+
+    public static bool IsYouTubePlaylist(string url)
+    {
+        try
+        {
+            var uri = new Uri(url);
+            if (!YouTubeHosts.Contains(uri.Host))
+                return false;
+            var query = HttpUtility.ParseQueryString(uri.Query);
+            var listParam = query.Get("list");
+            return !string.IsNullOrEmpty(listParam);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static async Task<List<VideoInfo>> GetPlaylistVideoInfos(string url, bool avPro)
+    {
+        var results = new List<VideoInfo>();
+        var args = new List<string>
+        {
+            "--flat-playlist",
+            "-j",
+            "--ignore-config",
+            "--no-warnings",
+            "--encoding utf-8"
+        };
+
+        if (File.Exists(YtdlManager.FfmpegPath))
+            args.Add($"--ffmpeg-location \"{YtdlManager.FfmpegPath}\"");
+        if (File.Exists(YtdlManager.DenoPath))
+            args.Add($"--js-runtimes deno:\"{YtdlManager.DenoPath}\"");
+        if (Program.IsCookiesEnabledAndValid())
+            args.Add($"--cookies \"{YtdlManager.CookiesPath}\"");
+        if (!string.IsNullOrEmpty(ConfigManager.Config.YtdlpAdditionalArgs))
+            args.Add(ConfigManager.Config.YtdlpAdditionalArgs);
+        args.Add($"\"{url}\"");
+
+        var process = new Process
+        {
+            StartInfo =
+            {
+                FileName = YtdlManager.YtdlPath,
+                Arguments = string.Join(' ', args),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            }
+        };
+        process.Start();
+        var output = await process.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        if (process.ExitCode != 0)
+        {
+            Log.Error("Failed to get playlist entries: {Error}", error.Trim());
+            return results;
+        }
+
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            try
+            {
+                var data = JsonSerializer.Deserialize(line.Trim(), VideoIdJsonContext.Default.YtdlpVideoInfo);
+                if (data?.Id == null) continue;
+
+                results.Add(new VideoInfo
+                {
+                    VideoUrl = $"https://www.youtube.com/watch?v={data.Id}",
+                    VideoId = data.Id,
+                    UrlType = UrlType.YouTube,
+                    DownloadFormat = avPro ? DownloadFormat.Webm : DownloadFormat.MP4
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Warning("Failed to parse playlist entry: {Error}", ex.Message);
+            }
+        }
+
+        Log.Information("Extracted {Count} videos from playlist: {URL}", results.Count, url);
+        return results;
+    }
+
+    private static async Task<string> GetRedirectUrl(string requestUrl)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Head, requestUrl);
+        using var res = await HttpClient.SendAsync(req);
+        if (!res.IsSuccessStatusCode)
+            return requestUrl;
+
+        return res.RequestMessage?.RequestUri?.ToString() ?? requestUrl;
+    }
 }

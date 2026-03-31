@@ -49,6 +49,12 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:LogEntry}">
                         <Grid ColumnDefinitions="80, 40, 100, *" Margin="5,2">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Copy" Tag="full" Click="OnCopyLogEntry"/>
+                                    <MenuItem Header="Copy Message Only" Tag="message" Click="OnCopyLogEntry"/>
+                                </ContextMenu>
+                            </Grid.ContextMenu>
                             <TextBlock Grid.Column="0"
                                        Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss}'}"
                                        FontFamily="Consolas"

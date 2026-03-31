@@ -39,10 +39,16 @@
                                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:dd MMM yyyy HH:mm}}" FontSize="11" Foreground="#666666" Margin="0,2,0,0"/>
                             </StackPanel>
 
-                            <!-- Type Badge -->
-                            <Border Grid.Column="2" Background="{Binding TypeBadgeColor}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="10,0">
-                                <TextBlock Text="{Binding TypeBadge}" FontSize="11" Foreground="White"/>
-                            </Border>
+                            <!-- Type Badge + Status Icons -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0">
+                                <Border Background="{Binding TypeBadgeColor}" CornerRadius="4" Padding="6,2">
+                                    <TextBlock Text="{Binding TypeBadge}" FontSize="11" Foreground="White"/>
+                                </Border>
+                                <mi:MaterialIcon Kind="Database" Width="16" Height="16" Foreground="#81C784"
+                                                 IsVisible="{Binding IsCached}" ToolTip.Tip="Saved to cache"/>
+                                <mi:MaterialIcon Kind="Clock" Width="16" Height="16" Foreground="#FFB74D"
+                                                 IsVisible="{Binding IsInQueue}" ToolTip.Tip="In download queue"/>
+                            </StackPanel>
 
                             <!-- Action Buttons -->
                             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">

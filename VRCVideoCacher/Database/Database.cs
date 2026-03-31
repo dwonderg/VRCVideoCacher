@@ -13,6 +13,8 @@ public class Database : DbContext
     
     // Required for PooledDbContextFactory
     public Database(DbContextOptions<Database> options) : base(options) { }
+    public DbSet<PendingDownload> PendingDownloads { get; set; }
+    public DbSet<VideoWatchStats> VideoWatchStats { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -22,5 +24,11 @@ public class Database : DbContext
             optionsBuilder.UseSqlite($"Data Source={DbPath}");
             optionsBuilder.EnableSensitiveDataLogging();
         }
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PendingDownload>().ToTable("vvc_PendingDownloads");
+        modelBuilder.Entity<VideoWatchStats>().ToTable("vvc_VideoWatchStats");
     }
 }

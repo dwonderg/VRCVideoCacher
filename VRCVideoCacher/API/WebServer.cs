@@ -20,7 +20,17 @@ public class WebServer
             File.WriteAllText(indexPath, "VRCVideoCacher");
 
         _server = CreateWebServer(ConfigManager.Config.YtdlpWebServerUrl);
-        _server.RunAsync();
+
+        // RunAsync returns a long-running task that completes when the server stops.
+        // Fire-and-forget, but observe faults so port-in-use errors get logged.
+        _server.RunAsync().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                var ex = t.Exception?.GetBaseException();
+                Log.Error(ex, "Web server failed: {Message}", ex?.Message);
+            }
+        }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     private static EmbedIO.WebServer CreateWebServer(string url)
@@ -51,6 +61,19 @@ public class WebServer
         server.OnUnhandledException += OnUnhandledException;
         server.OnHttpException += OnHttpException;
         return server;
+    }
+
+    public static void Stop()
+    {
+        try
+        {
+            _server?.Dispose();
+            _server = null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning("Error stopping web server: {Message}", ex.Message);
+        }
     }
 
     private static Task OnHttpException(IHttpContext context, IHttpException httpException)
