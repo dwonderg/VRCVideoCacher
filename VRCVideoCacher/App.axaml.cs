@@ -71,6 +71,9 @@ public partial class App : Application
             // Check for updates and show banner if available
             _ = CheckForUpdatesAsync(mainVm);
 
+            // Check if a previous session had a DNS connection failure
+            mainVm.CheckDnsFailure();
+
             // Set up tray icon
             SetupTrayIcon(desktop);
 

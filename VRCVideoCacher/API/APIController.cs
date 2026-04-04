@@ -14,9 +14,14 @@ public class ApiController : WebApiController
     private static int YoutubePrefetchMaxRetries => VvcConfigService.CurrentConfig.RetryCount;
 
     private static readonly Serilog.ILogger Log = Program.Logger.ForContext<ApiController>();
-    private static readonly HttpClient HttpClient = new()
+    private static readonly HttpClient HttpClient = new(new SocketsHttpHandler
     {
-        DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher" } }
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+    })
+    {
+        DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher" } },
+        Timeout = TimeSpan.FromSeconds(30),
     };
 
     [Route(HttpVerbs.Post, "/youtube-cookies")]

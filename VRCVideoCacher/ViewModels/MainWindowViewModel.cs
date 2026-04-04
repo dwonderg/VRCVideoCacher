@@ -26,6 +26,9 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private string _updateVersionText = "";
 
+    [ObservableProperty]
+    private bool _isDnsFlushPromptVisible;
+
     private GitHubRelease? _pendingRelease;
 
     public DashboardViewModel Dashboard { get; }
@@ -122,5 +125,26 @@ public partial class MainWindowViewModel : ViewModelBase
     private void DismissUpdate()
     {
         IsUpdateAvailable = false;
+    }
+
+    public void CheckDnsFailure()
+    {
+        if (VideoTools.HasDnsFailureFlag())
+            IsDnsFlushPromptVisible = true;
+    }
+
+    [RelayCommand]
+    private void FlushDns()
+    {
+        VideoTools.FlushSystemDnsCache();
+        VideoTools.ClearDnsFailureFlag();
+        IsDnsFlushPromptVisible = false;
+    }
+
+    [RelayCommand]
+    private void DismissDnsPrompt()
+    {
+        VideoTools.ClearDnsFailureFlag();
+        IsDnsFlushPromptVisible = false;
     }
 }

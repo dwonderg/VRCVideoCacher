@@ -29,6 +29,23 @@
             </Grid>
         </Border>
 
+        <!-- DNS Flush Banner -->
+        <Border Grid.Row="0" Background="#c62828" Padding="10,8"
+                IsVisible="{Binding IsDnsFlushPromptVisible}"
+                Margin="0,0,0,0">
+            <Grid ColumnDefinitions="*, Auto, Auto">
+                <TextBlock Grid.Column="0"
+                           Text="A connection failure was detected last session. Flushing your DNS cache may fix video playback issues."
+                           VerticalAlignment="Center" Foreground="White" FontWeight="Bold" TextWrapping="Wrap"/>
+                <Button Grid.Column="1" Content="Flush DNS Cache" Margin="10,0"
+                        Command="{Binding FlushDnsCommand}"
+                        Background="#8e0000" Foreground="White" Padding="12,4"/>
+                <Button Grid.Column="2" Content="Dismiss"
+                        Command="{Binding DismissDnsPromptCommand}"
+                        Background="Transparent" Foreground="White" Padding="8,4"/>
+            </Grid>
+        </Border>
+
         <!-- Main Content -->
         <Grid Grid.Row="1" ColumnDefinitions="200, *">
             <!-- Sidebar Navigation -->
