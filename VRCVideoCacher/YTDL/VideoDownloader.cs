@@ -22,7 +22,7 @@ public class VideoDownloader
 
     // Events for UI
     public static event Action<VideoInfo>? OnDownloadStarted;
-    public static event Action<VideoInfo, bool>? OnDownloadCompleted;
+    public static event Action<VideoInfo, bool, string?>? OnDownloadCompleted;
     public static event Action<VideoInfo>? OnDownloadPaused;
     public static event Action? OnQueueChanged;
     public static event Action<double>? OnDownloadProgress; // 0.0 to 100.0
@@ -144,19 +144,21 @@ public class VideoDownloader
             OnDownloadStarted?.Invoke(queueItem);
 
             var success = false;
+            string? failReason = null;
             try
             {
-                success = queueItem.UrlType switch
+                (success, failReason) = queueItem.UrlType switch
                 {
                     UrlType.YouTube => await DownloadYouTubeVideo(queueItem),
                     UrlType.PyPyDance or UrlType.VRDancing => await DownloadVideoWithId(queueItem),
-                    _ => false
+                    _ => (false, "SkipReasonUnsupportedUrl")
                 };
             }
             catch (OperationCanceledException) { /* paused via CTS, handled below */ }
             catch (Exception ex)
             {
                 Log.Error("Exception during download: {Ex}", ex.ToString());
+                failReason = ex.Message;
             }
 
             bool wasPaused;
@@ -181,7 +183,7 @@ public class VideoDownloader
             DatabaseManager.RemovePendingDownload(queueItem.VideoId, queueItem.DownloadFormat);
 
             _state = DownloadState.Idle;
-            OnDownloadCompleted?.Invoke(queueItem, success);
+            OnDownloadCompleted?.Invoke(queueItem, success, failReason);
             OnQueueChanged?.Invoke();
         }
     }
@@ -234,29 +236,30 @@ public class VideoDownloader
     public static VideoInfo? GetPausedDownload() { lock (StateLock) return _pausedDownload; }
     public static DownloadState GetDownloadState() => _state;
 
-    private static async Task<bool> DownloadYouTubeVideo(VideoInfo videoInfo)
+    private static async Task<(bool Success, string? FailReason)> DownloadYouTubeVideo(VideoInfo videoInfo)
     {
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
 
         var url = videoInfo.VideoUrl;
         string? videoId;
         try
         {
-            videoId = await VideoId.TryGetYouTubeVideoId(url);
-            if (string.IsNullOrEmpty(videoId))
+            var (id, skipReason) = await VideoId.TryGetYouTubeVideoId(url);
+            if (string.IsNullOrEmpty(id))
             {
-                Log.Warning("Invalid YouTube URL: {URL}", url);
-                return false;
+                Log.Warning("Skipping download for {URL}: {Reason}", url, skipReason);
+                return (false, skipReason);
             }
+            videoId = id;
         }
         catch (Exception ex)
         {
-            Log.Error("Not downloading YouTube video: {URL} {ex}", url, ex.ToString());
-            return false;
+            Log.Error("Skipping download for {URL}: {ex}", url, ex.Message);
+            return (false, ex.Message);
         }
 
         // Re-check after the yt-dlp metadata call — streaming may have started during it
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
 
         // Only delete completed temp files; .part files are preserved for -c to resume
         if (File.Exists(TempDownloadMp4Path))
@@ -316,7 +319,7 @@ public class VideoDownloader
         if (_pauseRequested)
         {
             lock (StateLock) { _currentProcess = null; }
-            return false;
+            return (false, null);
         }
 
         process.Start();
@@ -338,13 +341,13 @@ public class VideoDownloader
         lock (StateLock) { _currentProcess = null; }
 
         // If killed due to pause, don't treat non-zero exit as an error
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
         if (process.ExitCode != 0)
         {
             Log.Error("Failed to download YouTube Video: {exitCode} {URL} {error}", process.ExitCode, url, error);
             if (error.Contains("Sign in to confirm you're not a bot"))
                 Log.Error("Fix this error by following these instructions: https://github.com/clienthax/VRCVideoCacherBrowserExtension");
-            return false;
+            return (false, $"yt-dlp exited with code {process.ExitCode}");
         }
         Thread.Sleep(100);
 
@@ -359,7 +362,7 @@ public class VideoDownloader
                 if (File.Exists(TempDownloadWebmPath)) File.Delete(TempDownloadWebmPath);
             }
             catch (Exception ex) { Log.Error("Failed to delete temp file: {ex}", ex.ToString()); }
-            return false;
+            return (false, "SkipReasonFileExists");
         }
 
         if (File.Exists(TempDownloadMp4Path))
@@ -369,12 +372,12 @@ public class VideoDownloader
         else
         {
             Log.Error("Failed to download YouTube Video: {URL}", url);
-            return false;
+            return (false, "SkipReasonFileNotFound");
         }
 
         CacheManager.AddToCache(fileName);
         Log.Information("YouTube Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
-        return true;
+        return (true, null);
     }
 
     private static void ParseYtdlpProgress(string line)
@@ -429,9 +432,9 @@ public class VideoDownloader
         }
     }
 
-    private static async Task<bool> DownloadVideoWithId(VideoInfo videoInfo)
+    private static async Task<(bool Success, string? FailReason)> DownloadVideoWithId(VideoInfo videoInfo)
     {
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
 
         Log.Information("Downloading Video: {URL}", videoInfo.VideoUrl);
         var url = videoInfo.VideoUrl;
@@ -445,13 +448,13 @@ public class VideoDownloader
                 Log.Information("Resuming direct download from byte {Offset}.", resumeFrom);
         }
 
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
 
         var cts = new CancellationTokenSource();
         lock (StateLock) { _downloadCts = cts; }
 
         // Re-check after assigning CTS — streaming may have fired in the gap and found _downloadCts null
-        if (_pauseRequested) return false;
+        if (_pauseRequested) return (false, null);
 
         HttpResponseMessage response;
         try
@@ -461,7 +464,7 @@ public class VideoDownloader
                 request.Headers.Range = new RangeHeaderValue(resumeFrom, null);
             response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
         }
-        catch (OperationCanceledException) { return false; }
+        catch (OperationCanceledException) { return (false, null); }
 
         if (response.StatusCode == HttpStatusCode.Redirect)
         {
@@ -474,7 +477,7 @@ public class VideoDownloader
                     req2.Headers.Range = new RangeHeaderValue(resumeFrom, null);
                 response = await HttpClient.SendAsync(req2, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             }
-            catch (OperationCanceledException) { return false; }
+            catch (OperationCanceledException) { return (false, null); }
         }
 
         // 416 = server says our range is beyond the file — treat as already complete
@@ -484,7 +487,7 @@ public class VideoDownloader
             {
                 Log.Error("Failed to download video: {URL} {Status}", url, response.StatusCode);
                 response.Dispose();
-                return false;
+                return (false, $"HTTP {(int)response.StatusCode}");
             }
 
             try
@@ -503,7 +506,7 @@ public class VideoDownloader
             catch (OperationCanceledException)
             {
                 response.Dispose();
-                return false;
+                return (false, null);
             }
         }
 
@@ -523,11 +526,11 @@ public class VideoDownloader
         else
         {
             Log.Error("Failed to download Video: {URL}", url);
-            return false;
+            return (false, "SkipReasonFileNotFound");
         }
 
         CacheManager.AddToCache(fileName);
         Log.Information("Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
-        return true;
+        return (true, null);
     }
 }

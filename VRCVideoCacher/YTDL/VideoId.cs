@@ -128,25 +128,25 @@ public class VideoId
         }
     }
 
-    public static async Task<string> TryGetYouTubeVideoId(string url)
+    public static async Task<(string VideoId, string? SkipReason)> TryGetYouTubeVideoId(string url)
     {
         var args = new List<string>();
         args.Add("-j");
 
         var (rawData, error, exitCode) = await RunYtdlpAsync(args, url);
         if (exitCode != 0)
-            throw new Exception($"Failed to get video ID: {error.Trim()}");        
-        
+            throw new Exception($"yt-dlp metadata fetch failed: {error.Trim()}");
+
         if (string.IsNullOrEmpty(rawData))
         {
-            Log.Warning("Failed to get video ID");
-            return string.Empty;
+            Log.Warning("Skipping video: yt-dlp returned no metadata for {URL}", url);
+            return (string.Empty, "SkipReasonNoMetadata");
         }
         var data = JsonSerializer.Deserialize(rawData, VideoIdJsonContext.Default.YtdlpVideoInfo);
         if (data?.Id is null || data.Duration is null)
         {
-            Log.Warning("Failed to get video ID");
-            return string.Empty;
+            Log.Warning("Skipping video: could not parse video ID or duration for {URL}", url);
+            return (string.Empty, "SkipReasonParseFailed");
         }
 
         DatabaseManager.AddVideoInfoCache(new VideoInfoCache
@@ -160,16 +160,16 @@ public class VideoId
 
         if (data.IsLive == true)
         {
-            Log.Warning("Failed to get video ID: Video is a stream");
-            return string.Empty;
+            Log.Warning("Skipping video: video is a live stream");
+            return (string.Empty, "SkipReasonLiveStream");
         }
         if (data.Duration > ConfigManager.Config.CacheYouTubeMaxLength * 60)
         {
-            Log.Warning("Failed to get video ID: Video is longer than configured max length ({VideoMin}min > {MaxMin}min)", data.Duration / 60, ConfigManager.Config.CacheYouTubeMaxLength);
-            return string.Empty;
+            Log.Warning("Skipping video: duration exceeds allowed duration ({VideoMin:F1}min > {MaxMin}min)", data.Duration / 60.0, ConfigManager.Config.CacheYouTubeMaxLength);
+            return (string.Empty, string.Format("SkipReasonTooLong|{0:F0}|{1}", data.Duration / 60.0, ConfigManager.Config.CacheYouTubeMaxLength));
         }
 
-        return data.Id;
+        return (data.Id, null);
     }
 
     public static async Task<string> GetURLResonite(string url)

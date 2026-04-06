@@ -101,7 +101,7 @@ public partial class DashboardViewModel : ViewModelBase
         });
     }
 
-    private void OnDownloadCompleted(Models.VideoInfo video, bool success)
+    private void OnDownloadCompleted(Models.VideoInfo video, bool success, string? failReason)
     {
         Dispatcher.UIThread.InvokeAsync(() =>
         {

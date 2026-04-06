@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
+using CodingSeb.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VRCVideoCacher.Database;
@@ -88,7 +89,23 @@ public partial class DownloadQueueViewModel : ViewModelBase
         });
     }
 
-    private void OnDownloadCompleted(VideoInfo video, bool success)
+    private static string TranslateFailReason(string failReason)
+    {
+        // Format: "SkipReasonTooLong|34|10" for parameterized keys
+        var parts = failReason.Split('|');
+        var key = parts[0];
+        var translated = Loc.Tr(key);
+        if (translated == key)
+            return failReason; // not a translation key, use as-is (e.g. exception messages)
+        if (parts.Length > 1)
+        {
+            var args = parts.Skip(1).Cast<object>().ToArray();
+            return string.Format(translated, args);
+        }
+        return translated;
+    }
+
+    private void OnDownloadCompleted(VideoInfo video, bool success, string? failReason)
     {
         var title = LookupTitle(video.VideoId);
         var displayName = !string.IsNullOrEmpty(title) ? title : video.VideoId;
@@ -96,9 +113,12 @@ public partial class DownloadQueueViewModel : ViewModelBase
         {
             CurrentDownload = null;
             CurrentStatus = success ? "Completed" : "Failed";
-            StatusMessage = success
-                ? $"Downloaded: {displayName}"
-                : $"Failed to download: {displayName}";
+            if (success)
+                StatusMessage = string.Format(Loc.Tr("DownloadCompleted"), displayName);
+            else if (!string.IsNullOrEmpty(failReason))
+                StatusMessage = string.Format(Loc.Tr("DownloadSkipped"), displayName, TranslateFailReason(failReason));
+            else
+                StatusMessage = string.Format(Loc.Tr("DownloadFailed"), displayName);
             DownloadProgress = 0;
             IsDownloading = false;
             RefreshQueue();
