@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Semver;
@@ -68,9 +69,9 @@ public class Updater
 #endif
     }
 
-    public static async Task ApplyUpdate(GitHubRelease release)
+    public static async Task<bool> ApplyUpdate(GitHubRelease release)
     {
-        await UpdateAsync(release);
+        return await DownloadAndStageAsync(release);
     }
 
     public static void Cleanup()
@@ -82,7 +83,7 @@ public class Updater
         }
     }
 
-    private static async Task UpdateAsync(GitHubRelease release)
+    private static async Task<bool> DownloadAndStageAsync(GitHubRelease release)
     {
         foreach (var asset in release.assets)
         {
@@ -97,48 +98,84 @@ public class Updater
                     File.Delete(TempFilePath);
                 }
 
-                await using var stream = await HttpClient.GetStreamAsync(asset.browser_download_url);
-                await using var fileStream = new FileStream(TempFilePath, FileMode.Create, FileAccess.Write, FileShare.None);
-                await stream.CopyToAsync(fileStream);
-                fileStream.Close();
+                await using (var stream = await HttpClient.GetStreamAsync(asset.browser_download_url))
+                await using (var fileStream = new FileStream(TempFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
 
                 if (!await HashCheck(asset.digest))
                 {
-                    Log.Information("Hash check failed, aborting update.");
-                    File.Delete(TempFilePath);
-                    return;
+                    Log.Warning("Hash check failed, aborting update.");
+                    TryDeleteTempFile();
+                    return false;
                 }
-
-                Log.Information("Hash check passed, launching updater.");
 
                 if (!OperatingSystem.IsWindows())
                     FileTools.MarkFileExecutable(TempFilePath);
 
-                var pid = Environment.ProcessId;
-                var args = LaunchArgs.BuildArgs();
-                args.Add($"--old-pid={pid}");
-                var argsString = string.Join(' ', args.Select(x => x));
-                Log.Information("Launching new Version: {Version} with Args: {Args}", release.tag_name, argsString);
-
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = TempFilePath,
-                        UseShellExecute = true,
-                        WorkingDirectory = Program.CurrentProcessPath,
-                        Arguments = argsString
-                    }
-                };
-                process.Start();
-                Environment.Exit(0);
+                Log.Information("Update {Version} downloaded. Will install when the app exits.", release.tag_name);
+                return true;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine("Failed to update: {Message}", ex.ToString());
-                if (File.Exists(TempFilePath))
-                    File.Delete(TempFilePath);
+                Log.Error(ex, "Failed to download update.");
+                TryDeleteTempFile();
+                return false;
             }
+        }
+        Log.Warning("No matching asset ({FileName}) found in release {Tag}.", FileName, release.tag_name);
+        return false;
+    }
+
+    public static void FinalizeUpdateOnExit()
+    {
+        // Startup cleanup (RunUpdateHandler, OldPid==null branch) removes any stale temp file,
+        // so its presence here means DownloadAndStageAsync successfully staged it this session.
+        if (!File.Exists(TempFilePath))
+            return;
+
+        try
+        {
+            var pid = Environment.ProcessId;
+            var args = LaunchArgs.BuildArgs();
+            args.Add($"--old-pid={pid}");
+            var argsString = string.Join(' ', args);
+            Log.Information("Launching staged updater on exit. Args: {Args}", argsString);
+
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = TempFilePath,
+                    UseShellExecute = true,
+                    WorkingDirectory = Program.CurrentProcessPath,
+                    Arguments = argsString
+                }
+            };
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to launch staged updater on exit.");
+        }
+    }
+
+    private static void TryDeleteTempFile()
+    {
+        // When running as the staged Temp.exe, we can't delete our own image on Windows.
+        // The next clean launch of the real exe will clean it up via the cleanup branch.
+        if (string.Equals(Environment.ProcessPath, TempFilePath, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            if (File.Exists(TempFilePath))
+                File.Delete(TempFilePath);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to delete temp update file: {Path}", TempFilePath);
         }
     }
 
@@ -171,71 +208,104 @@ public class Updater
     {
         if (LaunchArgs.OldPid == null)
         {
-            // clean up
+            // Cleanup branch — only the post-update real exe runs this. Drop the staged temp file.
             if (Environment.ProcessPath != TempFilePath && File.Exists(TempFilePath))
             {
                 Console.WriteLine("Update temp file exists. Deleting temp file.");
-                File.Delete(TempFilePath);
+                try { File.Delete(TempFilePath); } catch { /* best-effort */ }
             }
             return false;
         }
 
-        if (Environment.ProcessPath == null)
-        {
-            Console.Error.WriteLine("Process path is null. Aborting update to prevent potential issues.");
-            return false;
-        }
-        if (Environment.ProcessPath == FilePath)
-        {
-            Console.Error.WriteLine("Process path is the same as the target file path. Aborting update to prevent self-deletion.");
-            return false;
-        }
-
+        // From here on we are the staged Temp.exe. ANY failure must terminate this process
+        // — never fall through to running as the app, otherwise the user ends up running
+        // Temp.exe while the on-disk VRCVideoCacher.exe is still the old version.
         try
         {
-            using var oldProcess = Process.GetProcessById(LaunchArgs.OldPid.Value);
-            if (!oldProcess.WaitForExit(10_000))
+            if (Environment.ProcessPath == null)
             {
-                Console.Error.WriteLine("Old process did not exit within the timeout period. Aborting update to prevent potential issues.");
-                return false;
+                Console.Error.WriteLine("Process path is null. Aborting update.");
+                AbortStagedUpdate();
             }
-        }
-        catch
-        {
-            // Process already gone — that's fine
-        }
+            if (Environment.ProcessPath == FilePath)
+            {
+                Console.Error.WriteLine("Process path is the same as the target file path. Aborting update to prevent self-deletion.");
+                AbortStagedUpdate();
+            }
 
-        try
-        {
-            File.Copy(Environment.ProcessPath, FilePath, overwrite: true);
+            try
+            {
+                using var oldProcess = Process.GetProcessById(LaunchArgs.OldPid.Value);
+                if (!oldProcess.WaitForExit(10_000))
+                {
+                    Console.Error.WriteLine("Old process did not exit within the timeout period. Aborting update.");
+                    AbortStagedUpdate();
+                }
+            }
+            catch
+            {
+                // Process already gone — that's fine
+            }
+
+            // Windows can hold the executable lock briefly after the owning process exits.
+            // Retry the copy a few times to ride out that window.
+            const int maxAttempts = 8;
+            Exception? lastError = null;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    File.Copy(Environment.ProcessPath, FilePath, overwrite: true);
+                    lastError = null;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    Console.Error.WriteLine($"Copy attempt {attempt}/{maxAttempts} failed: {ex.Message}");
+                    Thread.Sleep(500);
+                }
+            }
+            if (lastError != null)
+            {
+                Console.Error.WriteLine($"Failed to copy new version to target path after {maxAttempts} attempts: {lastError}");
+                AbortStagedUpdate();
+            }
+
+            if (!FilesHashMatch(Environment.ProcessPath, FilePath))
+            {
+                Console.Error.WriteLine("Hash check failed after copying new version. Aborting update to prevent potential corruption.");
+                AbortStagedUpdate();
+            }
+
+            var args = LaunchArgs.BuildArgs();
+            var argsString = string.Join(' ', args);
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = FilePath,
+                    UseShellExecute = true,
+                    WorkingDirectory = Path.GetDirectoryName(FilePath),
+                    Arguments = argsString
+                }
+            };
+            process.Start();
+            return true;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Failed to copy new version to target path: {Message}", ex.ToString());
-            return false;
+            Console.Error.WriteLine($"Unexpected error during staged update: {ex}");
+            AbortStagedUpdate();
+            return false; // unreachable, AbortStagedUpdate terminates the process
         }
+    }
 
-        // Verify the copy matches self
-        if (!FilesHashMatch(Environment.ProcessPath, FilePath))
-        {
-            Console.Error.WriteLine("Hash check failed after copying new version. Aborting update to prevent potential corruption.");
-            return false;
-        }
-
-        var args = LaunchArgs.BuildArgs();
-        var argsString = string.Join(' ', args.Select(x => x));
-        var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = FilePath,
-                UseShellExecute = true,
-                WorkingDirectory = Path.GetDirectoryName(FilePath),
-                Arguments = argsString
-            }
-        };
-        process.Start();
-        return true;
+    [DoesNotReturn]
+    private static void AbortStagedUpdate()
+    {
+        TryDeleteTempFile();
+        Environment.Exit(1);
     }
 }
 

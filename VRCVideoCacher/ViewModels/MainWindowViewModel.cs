@@ -24,6 +24,9 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isUpdateAvailable;
 
     [ObservableProperty]
+    private bool _isUpdatePending;
+
+    [ObservableProperty]
     private string _updateVersionText = "";
 
     [ObservableProperty]
@@ -118,7 +121,16 @@ public partial class MainWindowViewModel : ViewModelBase
     private async Task ApplyUpdate()
     {
         if (_pendingRelease == null) return;
-        await Updater.ApplyUpdate(_pendingRelease);
+        var ok = await Updater.ApplyUpdate(_pendingRelease);
+        if (ok)
+        {
+            IsUpdatePending = true;
+            UpdateVersionText = $"Update downloaded — will install when you close the app.";
+        }
+        else
+        {
+            UpdateVersionText = "Update download failed. Check logs and try again.";
+        }
     }
 
     [RelayCommand]

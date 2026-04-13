@@ -392,6 +392,7 @@ internal sealed class Program
     {
         API.WebServer.Stop();
         FileTools.RestoreAllYtdl();
+        Updater.FinalizeUpdateOnExit();
         Logger.Information("Exiting...");
     }
 

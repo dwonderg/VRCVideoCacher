@@ -22,6 +22,7 @@
                            VerticalAlignment="Center" Foreground="White" FontWeight="Bold"/>
                 <Button Grid.Column="1" Content="Update Now" Margin="10,0"
                         Command="{Binding ApplyUpdateCommand}"
+                        IsVisible="{Binding !IsUpdatePending}"
                         Background="#1b5e30" Foreground="White" Padding="12,4"/>
                 <Button Grid.Column="2" Content="Dismiss"
                         Command="{Binding DismissUpdateCommand}"
