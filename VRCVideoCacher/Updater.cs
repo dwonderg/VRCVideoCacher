@@ -24,17 +24,17 @@ public class Updater
 
     public static async Task<UpdateInfo?> CheckForUpdates()
     {
-#if STEAMRELEASE || DEBUG
-        Log.Information("Skipping update check (Steam/dev build).");
-        return null;
-#else
-        if (Program.Version.Contains("-dev"))
+        Log.Information("Checking for updates...");
+        var isDebug = false;
+#if DEBUG
+        isDebug = true;
+#endif
+        if (Program.Version.Contains("-dev") || isDebug)
         {
             Log.Information("Running in dev mode. Skipping update check.");
             return null;
         }
 
-        Log.Information("Checking for updates...");
         using var response = await HttpClient.GetAsync(UpdateUrl);
         if (!response.IsSuccessStatusCode)
         {
@@ -66,7 +66,6 @@ public class Updater
         }
         Log.Information("Update available: {Version}", latestVersion);
         return new UpdateInfo(latestVersion.ToString(), latestRelease);
-#endif
     }
 
     public static async Task<bool> ApplyUpdate(GitHubRelease release)
@@ -200,7 +199,7 @@ public class Updater
         sha.Initialize();
         var hashB = Convert.ToHexString(sha.ComputeHash(b));
         var match = string.Equals(hashA, hashB, StringComparison.OrdinalIgnoreCase);
-        Log.Information($"[Updater] Hash self={hashA} copy={hashB} match={match}");
+        Log.Information("[Updater] Hash self={HashA} copy={HashB} match={Match}", hashA, hashB, match);
         return match;
     }
 

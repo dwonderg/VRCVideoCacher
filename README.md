@@ -2,7 +2,6 @@
 
 ![Header Banner](https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4296960/d1bac93e4abb00108cda2137260b76a25bcffea4/header.jpg)
 
-
 <hr>
 </div>
 
@@ -57,14 +56,21 @@ Not supported, for now.
 
 ---
 
-### Wiki
-- [Launch Options](https://github.com/EllyVR/VRCVideoCacher/wiki/Launch-Options)
-- [Cli Config Options](https://github.com/EllyVR/VRCVideoCacher/wiki/Config-Options)
-- [Linux](https://github.com/EllyVR/VRCVideoCacher/wiki/Linux)
+## More from the EllyVR VRCVideoCacher README
 
 ### What is VRCVideoCacher?
 
 VRCVideoCacher is a tool used to cache VRChat videos to your local disk and/or fix YouTube videos from failing to load.
+
+[![Wiki](https://img.shields.io/badge/Wiki-Info-green)](https://github.com/EllyVR/VRCVideoCacher/wiki)
+[![Steam Download](https://img.shields.io/badge/Steam-Download-blue?logo=steam)](https://store.steampowered.com/app/4296960)
+[![Github Download](https://img.shields.io/badge/Github-Download-blue?logo=github)](https://github.com/EllyVR/VRCVideoCacher/releases/latest)
+[![Discord Server](https://img.shields.io/badge/Discord-Join%20Server-5865F2?logo=discord)](https://discord.gg/z5kVNkmQuS)
+
+### Wiki
+- [Launch Options](https://github.com/EllyVR/VRCVideoCacher/wiki/Launch-Options)
+- [Cli Config Options](https://github.com/EllyVR/VRCVideoCacher/wiki/Config-Options)
+- [Linux](https://github.com/EllyVR/VRCVideoCacher/wiki/Linux)
 
 ### How does it work?
 

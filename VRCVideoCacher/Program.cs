@@ -206,13 +206,13 @@ internal sealed class Program
 
         Log.Logger = loggerConfiguration.CreateLogger();
         Logger = Log.ForContext("SourceContext", "Core");
+
+        Logger.Information("VRCVideoCacher version {Version} created by {Elly}, {Natsumi}, {Haxy}, {Hauskaz}, {DubyaDude}", Version, Creator_Elly, Creator_Natsumi, Creator_Haxy, Creator_Hauskaz, Creator_DubyaDude);
     }
 
     private static async Task InitVrcVideoCacher()
     {
         try { Console.Title = $"VRCVideoCacherPlus v{Version}{AdminCheck.GetAdminTitleWarning()}"; } catch { /* GUI mode, no console */ }
-
-        Logger.Information("VRCVideoCacher version {Version} created by {Elly}, {Natsumi}, {Haxy}, {Hauskaz}, {DubyaDude}", Version, Creator_Elly, Creator_Natsumi, Creator_Haxy, Creator_Hauskaz, Creator_DubyaDude);
 
         if (AdminCheck.ShouldShowAdminWarning())
         {
@@ -220,6 +220,9 @@ internal sealed class Program
         }
 
         Directory.CreateDirectory(UtilsPath);
+#if !STEAMRELEASE
+        await Updater.CheckForUpdates();
+#endif
         Updater.Cleanup();
         if (Environment.CommandLine.Contains("--Reset"))
         {
