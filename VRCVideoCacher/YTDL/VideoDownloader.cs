@@ -489,6 +489,11 @@ public class VideoDownloader
             response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
         }
         catch (OperationCanceledException) { return (false, null); }
+        catch (HttpRequestException ex)
+        {
+            Log.Error(ex, "Failed to start download for {URL}", url);
+            return (false, "network error");
+        }
 
         if (response.StatusCode == HttpStatusCode.Redirect)
         {
@@ -502,6 +507,11 @@ public class VideoDownloader
                 response = await HttpClient.SendAsync(req2, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             }
             catch (OperationCanceledException) { return (false, null); }
+            catch (HttpRequestException ex)
+            {
+                Log.Error(ex, "Failed to follow redirect for {URL}", url);
+                return (false, "network error");
+            }
         }
 
         // 416 = server says our range is beyond the file — treat as already complete
@@ -531,6 +541,18 @@ public class VideoDownloader
             {
                 response.Dispose();
                 return (false, null);
+            }
+            catch (IOException ex)
+            {
+                response.Dispose();
+                Log.Error(ex, "Download stream failed for {URL}", url);
+                return (false, "network error");
+            }
+            catch (HttpRequestException ex)
+            {
+                response.Dispose();
+                Log.Error(ex, "Download stream failed for {URL}", url);
+                return (false, "network error");
             }
         }
 

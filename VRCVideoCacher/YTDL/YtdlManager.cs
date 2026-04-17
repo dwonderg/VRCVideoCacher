@@ -92,7 +92,14 @@ public class YtdlManager
         {
             await Task.Delay(interval);
             await VvcConfigService.GetConfig();
-            await TryDownloadYtdlp();
+            try
+            {
+                await TryDownloadYtdlp();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "YT-DLP update check failed, will retry next interval.");
+            }
         }
         // ReSharper disable once FunctionNeverReturns
     }
@@ -103,39 +110,46 @@ public class YtdlManager
             throw new Exception("Failed to get Utils path");
 
         Log.Information("Checking for YT-DLP updates...");
-        using var response = await HttpClient.GetAsync(YtdlpApiUrl);
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            Log.Warning("Failed to check for YT-DLP updates.");
-            return;
-        }
-        var data = await response.Content.ReadAsStringAsync();
-        var json = JsonConvert.DeserializeObject<GitHubRelease>(data);
-        if (json == null)
-        {
-            Log.Error("Failed to parse YT-DLP update response.");
-            return;
-        }
+            using var response = await HttpClient.GetAsync(YtdlpApiUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("Failed to check for YT-DLP updates.");
+                return;
+            }
+            var data = await response.Content.ReadAsStringAsync();
+            var json = JsonConvert.DeserializeObject<GitHubRelease>(data);
+            if (json == null)
+            {
+                Log.Error("Failed to parse YT-DLP update response.");
+                return;
+            }
 
-        var currentYtdlVersion = Versions.CurrentVersion.Ytdlp;
-        if (!File.Exists(YtdlPath))
-            currentYtdlVersion = "Not Installed";
+            var currentYtdlVersion = Versions.CurrentVersion.Ytdlp;
+            if (!File.Exists(YtdlPath))
+                currentYtdlVersion = "Not Installed";
 
-        var latestVersion = json.tag_name;
-        Log.Information("YT-DLP Current: {Installed} Latest: {Latest}", currentYtdlVersion, latestVersion);
-        if (string.IsNullOrEmpty(latestVersion))
-        {
-            Log.Warning("Failed to check for YT-DLP updates.");
-            return;
-        }
-        if (currentYtdlVersion == latestVersion)
-        {
-            Log.Information("YT-DLP is up to date.");
-            return;
-        }
-        Log.Information("YT-DLP is outdated. Updating...");
+            var latestVersion = json.tag_name;
+            Log.Information("YT-DLP Current: {Installed} Latest: {Latest}", currentYtdlVersion, latestVersion);
+            if (string.IsNullOrEmpty(latestVersion))
+            {
+                Log.Warning("Failed to check for YT-DLP updates.");
+                return;
+            }
+            if (currentYtdlVersion == latestVersion)
+            {
+                Log.Information("YT-DLP is up to date.");
+                return;
+            }
+            Log.Information("YT-DLP is outdated. Updating...");
 
-        await DownloadYtdl(json);
+            await DownloadYtdl(json);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Log.Warning(ex, "YT-DLP update failed due to a network error.");
+        }
     }
 
     public static async Task TryDownloadDeno()
@@ -143,6 +157,18 @@ public class YtdlManager
         if (!Directory.Exists(Program.UtilsPath))
             throw new Exception("Failed to get Utils path");
 
+        try
+        {
+            await TryDownloadDenoInner();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Log.Warning(ex, "Deno update failed due to a network error.");
+        }
+    }
+
+    private static async Task TryDownloadDenoInner()
+    {
         using var apiResponse = await HttpClient.GetAsync(DenoApiUrl);
         if (!apiResponse.IsSuccessStatusCode)
         {
@@ -288,6 +314,18 @@ public class YtdlManager
         if (!ConfigManager.Config.CacheYouTube)
             return;
 
+        try
+        {
+            await TryDownloadFfmpegInner();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Log.Warning(ex, "FFmpeg update failed due to a network error.");
+        }
+    }
+
+    private static async Task TryDownloadFfmpegInner()
+    {
         using var apiResponse = await HttpClient.GetAsync(OperatingSystem.IsWindows() ? FfmpegApiUrl : FfmpegNightlyApiUrl);
         if (!apiResponse.IsSuccessStatusCode)
         {

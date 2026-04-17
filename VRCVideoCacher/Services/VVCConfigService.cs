@@ -1,11 +1,13 @@
 using System.Text.Json.Serialization;
 using Newtonsoft.Json;
+using Serilog;
 
 namespace VRCVideoCacher.Services;
 
 public class VvcConfigService
 {
     public static VvcConfig CurrentConfig = new();
+    private static readonly ILogger Log = Program.Logger.ForContext<VvcConfigService>();
     private static readonly HttpClient httpClient;
 
     static VvcConfigService()
@@ -15,12 +17,23 @@ public class VvcConfigService
     }
     public static async Task GetConfig()
     {
-        var req = await httpClient.GetAsync("https://vvc.ellyvr.dev/api/v1/config");
-        if (req.IsSuccessStatusCode)
+        try
         {
-            var deserialized = JsonConvert.DeserializeObject<VvcConfig>(await req.Content.ReadAsStringAsync());
-            if (deserialized != null)
-                CurrentConfig = deserialized;
+            var req = await httpClient.GetAsync("https://vvc.ellyvr.dev/api/v1/config");
+            if (req.IsSuccessStatusCode)
+            {
+                var deserialized = JsonConvert.DeserializeObject<VvcConfig>(await req.Content.ReadAsStringAsync());
+                if (deserialized != null)
+                    CurrentConfig = deserialized;
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Log.Warning(ex, "Failed to reach VVC config endpoint, keeping current config.");
+        }
+        catch (TaskCanceledException ex)
+        {
+            Log.Warning(ex, "VVC config request timed out, keeping current config.");
         }
     }
 }

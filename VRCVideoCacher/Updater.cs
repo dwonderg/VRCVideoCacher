@@ -35,13 +35,30 @@ public class Updater
             return null;
         }
 
-        using var response = await HttpClient.GetAsync(UpdateUrl);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        string data;
+        try
         {
-            Log.Warning("Failed to check for updates.");
+            response = await HttpClient.GetAsync(UpdateUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("Failed to check for updates.");
+                response.Dispose();
+                return null;
+            }
+            data = await response.Content.ReadAsStringAsync();
+            response.Dispose();
+        }
+        catch (HttpRequestException ex)
+        {
+            Log.Warning(ex, "Failed to reach update server.");
             return null;
         }
-        var data = await response.Content.ReadAsStringAsync();
+        catch (TaskCanceledException ex)
+        {
+            Log.Warning(ex, "Update check timed out.");
+            return null;
+        }
         var latestRelease = JsonConvert.DeserializeObject<GitHubRelease>(data);
         if (latestRelease == null)
         {

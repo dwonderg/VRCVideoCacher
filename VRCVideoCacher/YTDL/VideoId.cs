@@ -16,7 +16,6 @@ namespace VRCVideoCacher.YTDL;
 public class VideoId
 {
     private static readonly ILogger Log = Program.Logger.ForContext<VideoId>();
-    private static readonly HttpClient HttpClient = new() { DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher" } } };
     private static readonly HashSet<string> YouTubeHosts = ["youtube.com", "youtu.be", "www.youtube.com", "m.youtube.com", "music.youtube.com"];
 
     internal static Uri? ToUri(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : null;
@@ -312,15 +311,5 @@ public class VideoId
 
         Log.Information("Extracted {Count} videos from playlist: {URL}", results.Count, url);
         return results;
-    }
-
-    private static async Task<string> GetRedirectUrl(string requestUrl)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Head, requestUrl);
-        using var res = await HttpClient.SendAsync(req);
-        if (!res.IsSuccessStatusCode)
-            return requestUrl;
-
-        return res.RequestMessage?.RequestUri?.ToString() ?? requestUrl;
     }
 }
