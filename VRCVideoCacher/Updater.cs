@@ -21,6 +21,8 @@ public class Updater
     private static readonly string FilePath = Path.Join(Program.CurrentProcessPath, FileName);
     private static readonly string BackupFilePath = Path.Join(Program.CurrentProcessPath, "VRCVideoCacher.bkp");
     private static readonly string TempFilePath = Path.Join(Program.CurrentProcessPath, OperatingSystem.IsWindows() ? "VRCVideoCacher.Temp.exe" : "VRCVideoCacher.Temp");
+    private const string TempProcessName = "VRCVideoCacher.Temp";
+    private static readonly string UpdaterLogPath = Path.Join(Program.DataPath, "Logs", "updater.log");
 
     public static async Task<UpdateInfo?> CheckForUpdates()
     {
@@ -158,6 +160,7 @@ public class Updater
             args.Add($"--old-pid={pid}");
             var argsString = string.Join(' ', args);
             Log.Information("Launching staged updater on exit. Args: {Args}", argsString);
+            LogToFile("INFO", $"Launching staged updater on exit. pid={pid} argsString={argsString}");
 
             var process = new Process
             {
@@ -169,12 +172,56 @@ public class Updater
                     Arguments = argsString
                 }
             };
-            process.Start();
+            var started = process.Start();
+            LogToFile("INFO", $"Staged updater Process.Start returned {started}.");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to launch staged updater on exit.");
+            LogToFile("ERROR", $"Failed to launch staged updater on exit: {ex}");
         }
+    }
+
+    private static void LogToFile(string level, string message)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(UpdaterLogPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            File.AppendAllText(UpdaterLogPath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+
+    // If a staged updater (VRCVideoCacher.Temp.exe) is currently swapping the real exe, a user
+    // who relaunches from the desktop shortcut can race it and end up running the old exe or
+    // hitting a file lock. Wait (bounded) for it to finish before we proceed.
+    private static void WaitForStagedUpdaterToFinish()
+    {
+        const int maxWaitMs = 15_000;
+        var waited = 0;
+        var announced = false;
+        while (waited < maxWaitMs)
+        {
+            var temps = Process.GetProcessesByName(TempProcessName);
+            if (temps.Length == 0)
+                return;
+            foreach (var p in temps) p.Dispose();
+            if (!announced)
+            {
+                Console.WriteLine("An update is in progress, waiting for it to finish...");
+                LogToFile("INFO", "Detected staged updater running at startup; waiting for it to finish.");
+                announced = true;
+            }
+            Thread.Sleep(500);
+            waited += 500;
+        }
+        Console.Error.WriteLine("Staged updater did not finish within the timeout period. Continuing anyway.");
+        LogToFile("WARN", "Staged updater did not exit within 15s. Continuing startup.");
     }
 
     private static void TryDeleteTempFile()
@@ -224,7 +271,11 @@ public class Updater
     {
         if (LaunchArgs.OldPid == null)
         {
-            // Cleanup branch — only the post-update real exe runs this. Drop the staged temp file.
+            // Cleanup branch — only the post-update real exe runs this. If the user double-clicks
+            // the shortcut while a staged updater is mid-swap, wait for it so we don't race the copy.
+            WaitForStagedUpdaterToFinish();
+
+            // Drop the staged temp file.
             if (Environment.ProcessPath != TempFilePath && File.Exists(TempFilePath))
             {
                 Console.WriteLine("Update temp file exists. Deleting temp file.");
@@ -236,16 +287,19 @@ public class Updater
         // From here on we are the staged Temp.exe. ANY failure must terminate this process
         // — never fall through to running as the app, otherwise the user ends up running
         // Temp.exe while the on-disk VRCVideoCacher.exe is still the old version.
+        LogToFile("INFO", $"Staged updater started. ProcessPath={Environment.ProcessPath} TargetPath={FilePath} OldPid={LaunchArgs.OldPid}");
         try
         {
             if (Environment.ProcessPath == null)
             {
                 Console.Error.WriteLine("Process path is null. Aborting update.");
+                LogToFile("ERROR", "Process path is null. Aborting update.");
                 AbortStagedUpdate();
             }
             if (Environment.ProcessPath == FilePath)
             {
                 Console.Error.WriteLine("Process path is the same as the target file path. Aborting update to prevent self-deletion.");
+                LogToFile("ERROR", $"Process path equals target path ({FilePath}). Aborting to prevent self-deletion.");
                 AbortStagedUpdate();
             }
 
@@ -255,6 +309,7 @@ public class Updater
                 if (!oldProcess.WaitForExit(10_000))
                 {
                     Console.Error.WriteLine("Old process did not exit within the timeout period. Aborting update.");
+                    LogToFile("ERROR", $"Old process (pid {LaunchArgs.OldPid}) did not exit within 10s. Aborting update.");
                     AbortStagedUpdate();
                 }
             }
@@ -263,9 +318,9 @@ public class Updater
                 // Process already gone — that's fine
             }
 
-            // Windows can hold the executable lock briefly after the owning process exits.
-            // Retry the copy a few times to ride out that window.
-            const int maxAttempts = 8;
+            // Windows can hold the executable lock for a surprisingly long time after the owning
+            // process exits (antivirus, shell extensions, etc). Retry aggressively to ride it out.
+            const int maxAttempts = 20;
             Exception? lastError = null;
             for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
@@ -273,24 +328,28 @@ public class Updater
                 {
                     File.Copy(Environment.ProcessPath, FilePath, overwrite: true);
                     lastError = null;
+                    LogToFile("INFO", $"Copied new exe to {FilePath} on attempt {attempt}.");
                     break;
                 }
                 catch (Exception ex)
                 {
                     lastError = ex;
                     Console.Error.WriteLine($"Copy attempt {attempt}/{maxAttempts} failed: {ex.Message}");
+                    LogToFile("WARN", $"Copy attempt {attempt}/{maxAttempts} failed: {ex.Message}");
                     Thread.Sleep(500);
                 }
             }
             if (lastError != null)
             {
                 Console.Error.WriteLine($"Failed to copy new version to target path after {maxAttempts} attempts: {lastError}");
+                LogToFile("ERROR", $"Failed to copy new version after {maxAttempts} attempts: {lastError}");
                 AbortStagedUpdate();
             }
 
             if (!FilesHashMatch(Environment.ProcessPath, FilePath))
             {
                 Console.Error.WriteLine("Hash check failed after copying new version. Aborting update to prevent potential corruption.");
+                LogToFile("ERROR", "Hash mismatch between staged temp exe and copied target exe. Aborting.");
                 AbortStagedUpdate();
             }
 
@@ -306,12 +365,14 @@ public class Updater
                     Arguments = argsString
                 }
             };
-            process.Start();
+            var started = process.Start();
+            LogToFile("INFO", $"Relaunched new exe at {FilePath}. Process.Start returned {started}.");
             return true;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Unexpected error during staged update: {ex}");
+            LogToFile("ERROR", $"Unexpected error during staged update: {ex}");
             AbortStagedUpdate();
             return false; // unreachable, AbortStagedUpdate terminates the process
         }
