@@ -60,8 +60,6 @@
   "GamePatching": "游戏补丁",
   "PatchVRChat": "为 VRChat 应用补丁",
   "PatchResonite": "为 Resonite 应用补丁",
-  "Updates": "更新",
-  "AutoUpdateVRCVideoCacher": "自动更新 VRCVideoCacher",
   "CloseToTray": "关闭到系统托盘",
   "StartMinimized": "启动时最小化",
   "StartWithSteamVr": "通过 SteamVR 启动应用",

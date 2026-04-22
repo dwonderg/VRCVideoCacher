@@ -12,16 +12,21 @@ namespace VRCVideoCacher;
 public class Updater
 {
     private const string UpdateUrl = "https://api.github.com/repos/codeyumx/VRCVideoCacherPlus/releases/latest";
+    // Asset name on the GitHub release — fixed by the publisher regardless of what the user has renamed their local exe to.
+    private static readonly string ReleaseAssetName = OperatingSystem.IsWindows() ? "VRCVideoCacher.exe" : "VRCVideoCacher";
     private static readonly HttpClient HttpClient = new()
     {
         DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher.Updater" } }
     };
     private static readonly ILogger Log = Program.Logger.ForContext<Updater>();
-    private static readonly string FileName = OperatingSystem.IsWindows() ? "VRCVideoCacher.exe" : "VRCVideoCacher";
-    private static readonly string FilePath = Path.Join(Program.CurrentProcessPath, FileName);
-    private static readonly string BackupFilePath = Path.Join(Program.CurrentProcessPath, "VRCVideoCacher.bkp");
-    private static readonly string TempFilePath = Path.Join(Program.CurrentProcessPath, OperatingSystem.IsWindows() ? "VRCVideoCacher.Temp.exe" : "VRCVideoCacher.Temp");
-    private const string TempProcessName = "VRCVideoCacher.Temp";
+    // Target the actually-running executable, not a hardcoded name — otherwise a user who renamed
+    // their exe would have the updater overwrite an unrelated file sitting next to it.
+    private static readonly string FilePath = Environment.ProcessPath ?? Path.Join(Program.CurrentProcessPath, ReleaseAssetName);
+    private static readonly string BaseName = Path.GetFileNameWithoutExtension(FilePath);
+    private static readonly string Extension = Path.GetExtension(FilePath);
+    private static readonly string BackupFilePath = Path.Join(Program.CurrentProcessPath, $"{BaseName}.bkp");
+    private static readonly string TempFilePath = Path.Join(Program.CurrentProcessPath, $"{BaseName}.Temp{Extension}");
+    private static readonly string TempProcessName = $"{BaseName}.Temp";
     private static readonly string UpdaterLogPath = Path.Join(Program.DataPath, "Logs", "updater.log");
 
     public static async Task<UpdateInfo?> CheckForUpdates()
@@ -105,7 +110,7 @@ public class Updater
     {
         foreach (var asset in release.assets)
         {
-            if (asset.name != FileName)
+            if (asset.name != ReleaseAssetName)
                 continue;
 
             try
@@ -142,7 +147,7 @@ public class Updater
                 return false;
             }
         }
-        Log.Warning("No matching asset ({FileName}) found in release {Tag}.", FileName, release.tag_name);
+        Log.Warning("No matching asset ({FileName}) found in release {Tag}.", ReleaseAssetName, release.tag_name);
         return false;
     }
 

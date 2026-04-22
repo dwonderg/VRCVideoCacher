@@ -215,9 +215,26 @@ public partial class CacheBrowserViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void DeleteAll()
+    private async Task DeleteAll()
     {
-        CacheManager.ClearCache();
+        var lifetime = Avalonia.Application.Current?.ApplicationLifetime
+            as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+        var owner = lifetime?.MainWindow;
+        if (owner == null)
+        {
+            // No UI available — fall back to direct clear so headless/console mode still works.
+            CacheManager.ClearCache();
+            return;
+        }
+
+        var message = string.Format(
+            Loc.Tr("ConfirmClearCacheFormat"),
+            CachedVideos.Count);
+        var dialog = Views.PopupWindow.CreateConfirm(message, Loc.Tr("Yes"), Loc.Tr("No"));
+        dialog.Title = Loc.Tr("ConfirmClearCacheTitle");
+        await dialog.ShowDialog(owner);
+        if (dialog.Confirmed)
+            CacheManager.ClearCache();
     }
 
     [RelayCommand]

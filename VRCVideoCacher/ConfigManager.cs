@@ -156,7 +156,6 @@ public class ConfigModel
     public bool PatchVrChat = true;
 
     // Video Cacher
-    public bool AutoUpdateVrcVideoCacher = true;
     public bool CloseToTray = true;
     public bool StartMinimized = false;
     public bool StartWithSteamVr = true;

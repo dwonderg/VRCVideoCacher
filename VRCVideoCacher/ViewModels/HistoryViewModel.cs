@@ -240,23 +240,41 @@ public partial class HistoryViewModel : ViewModelBase
 
         _ = Task.Run(async () =>
         {
-            foreach (var groupedItems in historyCache.GroupBy(h => h.Id))
+            // Must always clear _isRefreshing — any unhandled exception here would otherwise
+            // wedge Refresh() permanently, making the history UI stop updating after a few videos.
+            try
             {
-                (string? DisplayTitle, string? ThumbnailUrl)? metadata = null;
-                foreach (var item in groupedItems)
+                foreach (var groupedItems in historyCache.GroupBy(h => h.Id))
                 {
-                    if (metadata == null)
+                    (string? DisplayTitle, string? ThumbnailUrl)? metadata = null;
+                    foreach (var item in groupedItems)
                     {
-                        metadata = await item.LoadMetadataAsync();
-                    }
-                    else
-                    {
-                        item.SetMetadata(metadata.Value.DisplayTitle, metadata.Value.ThumbnailUrl);
+                        try
+                        {
+                            if (metadata == null)
+                            {
+                                metadata = await item.LoadMetadataAsync();
+                            }
+                            else
+                            {
+                                item.SetMetadata(metadata.Value.DisplayTitle, metadata.Value.ThumbnailUrl);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Serilog.Log.Warning(ex, "Failed to load metadata for history item {Id}", item.Id);
+                        }
                     }
                 }
-
             }
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => _isRefreshing = false);
+            catch (Exception ex)
+            {
+                Serilog.Log.Error(ex, "History metadata refresh failed");
+            }
+            finally
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _isRefreshing = false);
+            }
         });
     }
 }

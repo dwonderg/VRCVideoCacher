@@ -78,10 +78,6 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] 
     private bool _redirectVRDancing;
     
-    // Updates
-    [ObservableProperty]
-    private bool _autoUpdate;
-
     [ObservableProperty]
     private bool _closeToTray;
 
@@ -158,7 +154,6 @@ public partial class SettingsViewModel : ViewModelBase
         CacheDownloadRateLimitMBs = plusConfig.CacheDownloadRateLimitMBs > 0 ? plusConfig.CacheDownloadRateLimitMBs : 5;
         PatchResonite = config.PatchResonite;
         PatchVRC = config.PatchVrChat;
-        AutoUpdate = config.AutoUpdateVrcVideoCacher;
         CloseToTray = config.CloseToTray;
         StartMinimized = config.StartMinimized;
         StartWithSteamVr = config.StartWithSteamVr;
@@ -202,7 +197,6 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnCacheDownloadRateLimitMBsChanged(int value) => SetHasChanges();
     partial void OnPatchResoniteChanged(bool value) => SetHasChanges();
     partial void OnPatchVRCChanged(bool value) => SetHasChanges();
-    partial void OnAutoUpdateChanged(bool value) => SetHasChanges();
     partial void OnCloseToTrayChanged(bool value) => SetHasChanges();
     partial void OnStartMinimizedChanged(bool value) => SetHasChanges();
     partial void OnRedirectVRDancingChanged(bool value) => SetHasChanges();
@@ -236,7 +230,6 @@ public partial class SettingsViewModel : ViewModelBase
         plusConfig.CacheDownloadRateLimitMBs = IsRateLimitEnabled ? CacheDownloadRateLimitMBs : 0;
         config.PatchResonite = PatchResonite;
         config.PatchVrChat = PatchVRC;
-        config.AutoUpdateVrcVideoCacher = AutoUpdate;
         config.CloseToTray = CloseToTray;
         config.StartMinimized = StartMinimized;
         config.StartWithSteamVr = StartWithSteamVr;

@@ -1,7 +1,7 @@
 ﻿{
     "source" : "builtin",
     "applications" : [{
-        "app_key" : "com.github.ellyvr.vrcvideocacher",
+        "app_key" : "com.github.codeyumx.vrcvideocacherplus",
         "launch_type" : "binary",
         "binary_path_windows": "VRCVideoCacher.exe",
         "binary_path_linux": "VRCVideoCacher",
@@ -9,7 +9,7 @@
         "is_dashboard_overlay" : true,
         "strings": {
             "en_us": {
-                "name": "VRCVideoCacher",
+                "name": "VRCVideoCacherPlus",
                 "description": "Video Player utility for VRC"
             }
         }

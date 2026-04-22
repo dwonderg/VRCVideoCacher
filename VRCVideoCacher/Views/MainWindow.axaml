@@ -53,8 +53,15 @@
             <Border Grid.Column="0" Background="#1a1a1a" Padding="10">
                 <StackPanel Spacing="5">
                     <Image Source="avares://VRCVideoCacher/Assets/SmallBanner.png"
-                               Margin="0,10,0,20"
+                               Margin="0,10,0,2"
                                HorizontalAlignment="Center"/>
+
+                    <TextBlock Text="VRCVideoCacherPlus"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="#FFB347"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,18"/>
 
                     <Button Command="{Binding NavigateToDashboardCommand}"
                             HorizontalAlignment="Stretch"

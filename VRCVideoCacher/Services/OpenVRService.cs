@@ -1,4 +1,3 @@
-using System.Reflection;
 using Serilog;
 using Valve.VR;
 
@@ -33,10 +32,51 @@ public class OpenVRService
                 switch (initError)
                 {
                     case EVRInitError.None:
+                        // Upstream EllyVR build (including its Steam release) registers itself under
+                        // "com.github.ellyvr.vrcvideocacher". If a user previously ran the Steam build
+                        // and SteamVR still has that key set to auto-launch, SteamVR tries to launch
+                        // it via Steam and Steam pops the store page when the app isn't owned.
+                        // Proactively clear that auto-launch on startup.
+                        const string LegacyAppKey = "com.github.ellyvr.vrcvideocacher";
+                        const string ForkAppKey = "com.github.codeyumx.vrcvideocacherplus";
+                        try
+                        {
+                            if (OpenVR.Applications.IsApplicationInstalled(LegacyAppKey) &&
+                                OpenVR.Applications.GetApplicationAutoLaunch(LegacyAppKey))
+                            {
+                                Logger.Information("Disabling stale SteamVR auto-launch for legacy app key {Key}", LegacyAppKey);
+                                OpenVR.Applications.SetApplicationAutoLaunch(LegacyAppKey, false);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning(ex, "Failed to clear legacy auto-launch entry");
+                        }
+
+                        // Write the manifest with the real on-disk exe name so SteamVR auto-launch
+                        // still finds the binary if the user has renamed it.
                         var manifestPath = Path.Combine(dataPath, "manifest.vrmanifest");
-                        await using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("VRCVideoCacher.manifest.vrmanifest")!)
-                        await using (var file = File.Create(manifestPath))
-                            await stream.CopyToAsync(file);
+                        var exeName = Path.GetFileName(Environment.ProcessPath) ?? "VRCVideoCacher.exe";
+                        var manifestJson = $$"""
+                            {
+                                "source" : "builtin",
+                                "applications" : [{
+                                    "app_key" : "{{ForkAppKey}}",
+                                    "launch_type" : "binary",
+                                    "binary_path_windows": "{{exeName}}",
+                                    "binary_path_linux": "{{exeName}}",
+                                    "arguments": "--kill-existing-instance",
+                                    "is_dashboard_overlay" : true,
+                                    "strings": {
+                                        "en_us": {
+                                            "name": "VRCVideoCacherPlus",
+                                            "description": "Video Player utility for VRC (Plus fork)"
+                                        }
+                                    }
+                                }]
+                            }
+                            """;
+                        await File.WriteAllTextAsync(manifestPath, manifestJson);
                         var manifestError = OpenVR.Applications.AddApplicationManifest(manifestPath, false);
                         if (manifestError != EVRApplicationError.None)
                         {
@@ -44,12 +84,12 @@ public class OpenVRService
                         }
                         else
                         {
-                            if (OpenVR.Applications.IsApplicationInstalled("com.github.ellyvr.vrcvideocacher"))
+                            if (OpenVR.Applications.IsApplicationInstalled(ForkAppKey))
                             {
                                 Logger.Information("Startup manifest registered successfully");
 
                                 Logger.Information("{AutoLaunchState} steamvr auto-launch", ConfigManager.Config.StartWithSteamVr ? "Enabling" : "Disabling");
-                                OpenVR.Applications.SetApplicationAutoLaunch("com.github.ellyvr.vrcvideocacher", ConfigManager.Config.StartWithSteamVr);
+                                OpenVR.Applications.SetApplicationAutoLaunch(ForkAppKey, ConfigManager.Config.StartWithSteamVr);
                             }
                             else
                             {
