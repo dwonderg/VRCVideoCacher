@@ -70,7 +70,7 @@ public class VideoId
         var uri = ToUri(url);
         if (uri == null) return null;
 
-        var handler = SiteHandlerRegistry.Resolve(uri);
+        var handler = await SiteHandlerRegistry.ResolveAsync(url, uri);
         return handler == null ? null : await handler.GetVideoInfo(url, uri, avPro);
     }
 

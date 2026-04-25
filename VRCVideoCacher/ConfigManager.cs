@@ -144,6 +144,8 @@ public class ConfigModel
     public int CacheYouTubeMaxLength = 120;
     public bool CachePyPyDance = false;
     public bool CacheVrDancing = false;
+    public bool CacheHlsPlaylists = false;
+    public int CacheHlsMaxLength = 30;
     public bool CacheOnly = false;
     // Cache Rules
     public string[] BlockedUrls = ["https://na2.vrdancing.club/sampleurl.mp4"];

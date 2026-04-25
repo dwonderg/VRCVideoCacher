@@ -52,6 +52,7 @@
   "MaxVideoLength": "最大视频时长（分钟）",
   "CachePyPyDanceVideos": "缓存 PyPyDance 视频",
   "CacheVRDancingVideos": "缓存 VRDancing 视频",
+  "CacheHlsPlaylists": "缓存 HLS 视频 (.m3u8 / mpegts)",
   "OnlyServeCachedVideos": "仅提供已缓存的视频",
   "CacheDownloadIdleSeconds": "串流时暂停缓存下载（秒）",
   "CacheDownloadIdleSecondsTooltip": "当 VRChat 正在请求串流 URL 时暂停缓存下载，在此秒数内无新请求后恢复。设为 0 禁用。推荐值：120–300。",

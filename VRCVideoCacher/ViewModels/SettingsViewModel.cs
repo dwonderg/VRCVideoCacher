@@ -54,6 +54,12 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _cacheVRDancing;
 
     [ObservableProperty]
+    private bool _cacheHlsPlaylists;
+
+    [ObservableProperty]
+    private int _cacheHlsMaxLength;
+
+    [ObservableProperty]
     private bool _cacheOnly;
 
     [ObservableProperty]
@@ -146,6 +152,8 @@ public partial class SettingsViewModel : ViewModelBase
         CacheMaxSizeInGb = config.CacheMaxSizeInGb;
         CachePyPyDance = config.CachePyPyDance;
         CacheVRDancing = config.CacheVrDancing;
+        CacheHlsPlaylists = config.CacheHlsPlaylists;
+        CacheHlsMaxLength = config.CacheHlsMaxLength;
         CacheOnly = config.CacheOnly;
         var plusConfig = PlusConfigManager.Config;
         IsDelayEnabled = plusConfig.CacheDownloadIdleSeconds > 0;
@@ -190,6 +198,8 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnCacheMaxSizeInGbChanged(float value) => SetHasChanges();
     partial void OnCachePyPyDanceChanged(bool value) => SetHasChanges();
     partial void OnCacheVRDancingChanged(bool value) => SetHasChanges();
+    partial void OnCacheHlsPlaylistsChanged(bool value) => SetHasChanges();
+    partial void OnCacheHlsMaxLengthChanged(int value) => SetHasChanges();
     partial void OnCacheOnlyChanged(bool value) => SetHasChanges();
     partial void OnIsDelayEnabledChanged(bool value) => SetHasChanges();
     partial void OnCacheDownloadIdleSecondsChanged(int value) => SetHasChanges();
@@ -224,6 +234,8 @@ public partial class SettingsViewModel : ViewModelBase
         config.CacheMaxSizeInGb = CacheMaxSizeInGb;
         config.CachePyPyDance = CachePyPyDance;
         config.CacheVrDancing = CacheVRDancing;
+        config.CacheHlsPlaylists = CacheHlsPlaylists;
+        config.CacheHlsMaxLength = CacheHlsMaxLength;
         config.CacheOnly = CacheOnly;
         var plusConfig = PlusConfigManager.Config;
         plusConfig.CacheDownloadIdleSeconds = IsDelayEnabled ? CacheDownloadIdleSeconds : 0;

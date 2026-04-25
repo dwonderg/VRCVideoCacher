@@ -53,6 +53,7 @@
   "MaxVideoLength": "Maximális Videó Hossza (perc)",
   "CachePyPyDanceVideos": "PyPyDance Videók Gyorsítótár",
   "CacheVRDancingVideos": "VRDancing Videók Gyorsítótár",
+  "CacheHlsPlaylists": "HLS Videók Gyorsítótár (.m3u8 / mpegts)",
   "OnlyServeCachedVideos": "Csak Gyorsítótárazott Videókat Szolgáljon Ki",
   "CacheDownloadIdleSeconds": "Gyorsítótár letöltés szüneteltetése streamelés közben (másodperc)",
   "CacheDownloadIdleSecondsTooltip": "Szünetelteti a gyorsítótár letöltéseket, amíg a VRChat aktívan kér stream URL-eket, és folytatja ennyi másodperc inaktivitás után. 0 = letiltva. Ajánlott: 120–300.",

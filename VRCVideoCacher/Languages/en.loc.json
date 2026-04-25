@@ -56,6 +56,7 @@
   "MaxVideoLength": "Max Video Length (minutes)",
   "CachePyPyDanceVideos": "Cache PyPyDance Videos",
   "CacheVRDancingVideos": "Cache VRDancing Videos",
+  "CacheHlsPlaylists": "Cache HLS Videos (.m3u8 / mpegts)",
   "OnlyServeCachedVideos": "Only Serve Cached Videos",
   "CacheDownloadIdleSeconds": "Pause cache downloads while streaming (seconds)",
   "CacheDownloadIdleSecondsTooltip": "Pause cache downloads when VRChat is actively requesting stream URLs, and resume after this many seconds of inactivity. Set to 0 to disable. Recommended: 120–300. Use the speed limit below for long videos.",

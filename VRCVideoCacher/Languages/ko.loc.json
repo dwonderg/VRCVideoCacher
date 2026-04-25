@@ -52,6 +52,7 @@
   "MaxVideoLength": "최대 영상 길이 (분)",
   "CachePyPyDanceVideos": "PyPyDance 동영상 캐시",
   "CacheVRDancingVideos": "VRDancing 동영상 캐시",
+  "CacheHlsPlaylists": "HLS 동영상 캐시 (.m3u8 / mpegts)",
   "OnlyServeCachedVideos": "캐시된 동영상만 제공",
   "CacheDownloadIdleSeconds": "스트리밍 중 캐시 다운로드 일시정지 (초)",
   "CacheDownloadIdleSecondsTooltip": "VRChat이 스트림 URL을 요청하는 동안 캐시 다운로드를 일시정지하고, 이 시간(초) 동안 요청이 없으면 재개합니다. 0은 비활성화. 권장값: 120–300.",

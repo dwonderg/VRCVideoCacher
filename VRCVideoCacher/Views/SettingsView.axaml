@@ -123,6 +123,11 @@
 
                         <CheckBox IsChecked="{Binding CachePyPyDance}" Content="{loc:Tr CachePyPyDanceVideos}"/>
                         <CheckBox IsChecked="{Binding CacheVRDancing}" Content="{loc:Tr CacheVRDancingVideos}"/>
+                        <CheckBox IsChecked="{Binding CacheHlsPlaylists}" Content="{loc:Tr CacheHlsPlaylists}"/>
+                        <StackPanel Spacing="5" Margin="30,0,0,0" IsVisible="{Binding CacheHlsPlaylists}">
+                            <TextBlock Text="{loc:Tr MaxVideoLength}"/>
+                            <NumericUpDown Value="{Binding CacheHlsMaxLength}" Minimum="0" Increment="5"/>
+                        </StackPanel>
                         <CheckBox IsChecked="{Binding CacheOnly}" Content="{loc:Tr OnlyServeCachedVideos}"/>
 
                         <StackPanel Spacing="5">

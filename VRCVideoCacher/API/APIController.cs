@@ -6,6 +6,7 @@ using VRCVideoCacher.Database;
 using VRCVideoCacher.Models;
 using VRCVideoCacher.Services;
 using VRCVideoCacher.YTDL;
+using VRCVideoCacher.YTDL.SiteHandlers.Sites;
 
 namespace VRCVideoCacher.API;
 
@@ -159,6 +160,20 @@ public class ApiController : WebApiController
             return;
         }
 
+        // HLS manifests play natively in AVPro / VRChat's video player — yt-dlp's generic
+        // extractor would just return the same URL (or fail), so skip the extra process.
+        // We still queue the download below so it gets cached in the background.
+        if (videoInfo.UrlType == UrlType.Hls)
+        {
+            Log.Information("HLS URL: passing through without yt-dlp resolution.");
+            await HttpContext.SendStringAsync(string.Empty, "text/plain", Encoding.UTF8);
+            var hlsDuration = DatabaseManager.GetVideoInfoCache(videoInfo.VideoId)?.Duration;
+            ActiveStreamTracker.RecordActivity(videoInfo.VideoId, hlsDuration);
+            if (ConfigManager.Config.CacheHlsPlaylists && IsHlsCacheable(videoInfo, hlsDuration))
+                VideoDownloader.QueueDownload(videoInfo);
+            return;
+        }
+
         var (response, success) = await VideoId.GetUrl(videoInfo, avPro);
         if (!success)
         {
@@ -230,6 +245,37 @@ public class ApiController : WebApiController
         {
             VideoDownloader.QueueDownload(videoInfo);
         }
+    }
+
+    // HLS playlists are only cacheable if the probe observed an #EXT-X-ENDLIST and parsed a
+    // finite duration under the configured max — otherwise yt-dlp may sit on a live stream.
+    private static bool IsHlsCacheable(VideoInfo videoInfo, double? cachedDuration)
+    {
+        var probe = HlsHandler.TryGetCachedProbe(videoInfo.VideoUrl);
+        if (probe is null)
+        {
+            Log.Information("HLS {VideoId}: skipping cache — probe result unavailable.", videoInfo.VideoId);
+            return false;
+        }
+        if (!probe.Value.IsComplete)
+        {
+            Log.Information("HLS {VideoId}: skipping cache — manifest is live or incomplete (no #EXT-X-ENDLIST).", videoInfo.VideoId);
+            return false;
+        }
+        var duration = probe.Value.Duration ?? cachedDuration;
+        if (duration is not > 0)
+        {
+            Log.Information("HLS {VideoId}: skipping cache — no parsed duration.", videoInfo.VideoId);
+            return false;
+        }
+        var maxMinutes = ConfigManager.Config.CacheHlsMaxLength;
+        if (maxMinutes > 0 && duration > maxMinutes * 60)
+        {
+            Log.Information("HLS {VideoId}: skipping cache — {Min:F1}min exceeds max {Max}min.",
+                videoInfo.VideoId, duration.Value / 60.0, maxMinutes);
+            return false;
+        }
+        return true;
     }
 
     private static (bool isCached, string filePath, string fileName) GetCachedFile(string videoId, bool avPro)

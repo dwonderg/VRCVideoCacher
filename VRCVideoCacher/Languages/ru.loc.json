@@ -52,6 +52,7 @@
   "MaxVideoLength": "Максимальная длина Видео (В минутах)",
   "CachePyPyDanceVideos": "Кэшировать PyPyDance Видео",
   "CacheVRDancingVideos": "Кэшировать VrDancing Видео",
+  "CacheHlsPlaylists": "Кэшировать HLS Видео (.m3u8 / mpegts)",
   "OnlyServeCachedVideos": "Только Серверныйе Кэшированные видео",
   "CacheDownloadIdleSeconds": "Приостановить загрузку кэша во время стриминга (секунды)",
   "CacheDownloadIdleSecondsTooltip": "Приостанавливает загрузку кэша, пока VRChat запрашивает потоковые URL, и возобновляет после указанного времени бездействия. 0 = отключено. Рекомендуется: 120–300.",

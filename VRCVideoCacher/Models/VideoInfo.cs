@@ -6,6 +6,7 @@ public enum UrlType
     YouTube,
     PyPyDance,
     VRDancing,
+    Hls,
     Other
 }
 

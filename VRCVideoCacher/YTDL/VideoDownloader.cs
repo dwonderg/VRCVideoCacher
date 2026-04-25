@@ -5,6 +5,7 @@ using System.Text;
 using Serilog;
 using VRCVideoCacher.Database;
 using VRCVideoCacher.Models;
+using VRCVideoCacher.Services;
 
 namespace VRCVideoCacher.YTDL;
 
@@ -161,6 +162,7 @@ public class VideoDownloader
                 {
                     UrlType.YouTube => await DownloadYouTubeVideo(queueItem),
                     UrlType.PyPyDance or UrlType.VRDancing => await DownloadVideoWithId(queueItem),
+                    UrlType.Hls => await DownloadHlsVideo(queueItem),
                     _ => (false, "SkipReasonUnsupportedUrl")
                 };
             }
@@ -577,6 +579,124 @@ public class VideoDownloader
 
         CacheManager.AddToCache(fileName);
         Log.Information("Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
+        return (true, null);
+    }
+
+    /// <summary>
+    /// Downloads a finished HLS playlist by letting yt-dlp's generic extractor pull all
+    /// segments and remux them into a single MP4 via the bundled ffmpeg. Honors the
+    /// existing pause/resume and rate-limit plumbing.
+    /// </summary>
+    private static async Task<(bool Success, string? FailReason)> DownloadHlsVideo(VideoInfo videoInfo)
+    {
+        if (_pauseRequested) return (false, null);
+
+        if (File.Exists(TempDownloadMp4Path))
+        {
+            Log.Warning("Temp file already exists, deleting...");
+            File.Delete(TempDownloadMp4Path);
+        }
+
+        var args = new List<string>
+        {
+            "--newline",
+            $"-o \"{TempDownloadMp4Path}\"",
+            "--remux-video mp4",
+            // Let yt-dlp pick native vs. ffmpeg HLS downloader — native chokes on
+            // fMP4/CMAF (#EXT-X-MAP) playlists, ffmpeg handles those.
+            "--concurrent-fragments 4",
+            // CDN segment fetches can be flaky; retry the manifest a few times and
+            // each individual segment more aggressively before giving up.
+            "--retries 3",
+            "--fragment-retries 5"
+        };
+
+        var rateLimitMBs = PlusConfigManager.Config.CacheDownloadRateLimitMBs;
+        if (rateLimitMBs > 0)
+            args.Add($"--limit-rate {rateLimitMBs}M");
+
+        using var process = new Process
+        {
+            StartInfo =
+            {
+                FileName = YtdlManager.YtdlPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+            }
+        };
+
+        process.StartInfo.Arguments = YtdlManager.GenerateYtdlArgs(args, $"\"{videoInfo.VideoUrl}\"");
+        Log.Information("Downloading HLS Video: {Args}", process.StartInfo.Arguments);
+
+        lock (StateLock) { _currentProcess = process; }
+
+        if (_pauseRequested)
+        {
+            lock (StateLock) { _currentProcess = null; }
+            return (false, null);
+        }
+
+        process.Start();
+        var errorBuilder = new StringBuilder();
+        var errorTask = Task.Run(async () =>
+        {
+            while (await process.StandardError.ReadLineAsync() is { } line)
+                errorBuilder.AppendLine(line);
+        });
+        var outputTask = Task.Run(async () =>
+        {
+            while (await process.StandardOutput.ReadLineAsync() is { } line)
+                ParseYtdlpProgress(line);
+        });
+        await process.WaitForExitAsync();
+        await Task.WhenAll(errorTask, outputTask);
+        var error = errorBuilder.ToString().Trim();
+
+        lock (StateLock) { _currentProcess = null; }
+
+        if (_pauseRequested) return (false, null);
+        if (process.ExitCode != 0)
+        {
+            Log.Error("Failed to download HLS Video: {exitCode} {URL} {error}", process.ExitCode, videoInfo.VideoUrl, error);
+            return (false, $"yt-dlp exited with code {process.ExitCode}");
+        }
+
+        await Task.Delay(100);
+
+        var ext = videoInfo.DownloadFormat.ToString().ToLower();
+        var fileName = $"{videoInfo.VideoId}.{ext}";
+        var filePath = Path.Join(CacheManager.CachePath, fileName);
+        if (File.Exists(filePath))
+        {
+            Log.Error("File already exists, canceling...");
+            try { if (File.Exists(TempDownloadMp4Path)) File.Delete(TempDownloadMp4Path); }
+            catch (Exception ex) { Log.Error("Failed to delete temp file: {ex}", ex.ToString()); }
+            return (false, "SkipReasonFileExists");
+        }
+
+        if (!File.Exists(TempDownloadMp4Path))
+        {
+            Log.Error("HLS download produced no output file: {URL}", videoInfo.VideoUrl);
+            return (false, "SkipReasonFileNotFound");
+        }
+
+        File.Move(TempDownloadMp4Path, filePath, overwrite: true);
+        CacheManager.AddToCache(fileName);
+        Log.Information("HLS Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
+
+        // HLS has no remote thumbnail source — extract a frame from the cached MP4 so
+        // history rows show a real image instead of the gray placeholder.
+        _ = Task.Run(async () =>
+        {
+            var thumb = await ThumbnailManager.TryExtractFromVideoAsync(videoInfo.VideoId, filePath);
+            if (!string.IsNullOrEmpty(thumb))
+                Log.Information("HLS thumbnail extracted: {Path}", thumb);
+        });
+
         return (true, null);
     }
 }
