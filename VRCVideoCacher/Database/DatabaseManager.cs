@@ -57,6 +57,32 @@ public static class DatabaseManager
             """);
     }
 
+    public static string? GetLatestHistoryUrl(string videoId)
+    {
+        if (string.IsNullOrEmpty(videoId)) return null;
+        using var db = _contextFactory.CreateDbContext();
+        return db.PlayHistory
+            .AsNoTracking()
+            .Where(h => h.Id == videoId)
+            .OrderByDescending(h => h.Timestamp)
+            .Select(h => h.Url)
+            .FirstOrDefault();
+    }
+
+    public static Dictionary<string, string> GetLatestHistoryUrls(IEnumerable<string> videoIds)
+    {
+        var ids = videoIds.Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<string, string>();
+
+        using var db = _contextFactory.CreateDbContext();
+        return db.PlayHistory
+            .AsNoTracking()
+            .Where(h => h.Id != null && ids.Contains(h.Id))
+            .GroupBy(h => h.Id!)
+            .Select(g => g.OrderByDescending(h => h.Timestamp).First())
+            .ToDictionary(h => h.Id!, h => h.Url);
+    }
+
     public static VRDancingTitle? GetVRDancingTitle(string code)
     {
         if (string.IsNullOrEmpty(code)) return null;

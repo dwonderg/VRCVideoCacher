@@ -35,8 +35,8 @@ public partial class LogViewerViewModel : ViewModelBase
 
     public LogViewerViewModel()
     {
-        // Load buffered logs that occurred before UI was ready
-        foreach (var entry in LogService.GetBufferedLogs())
+        // Load buffered logs newest-first so the UI shows most recent at the top.
+        foreach (var entry in LogService.GetBufferedLogs().Reverse())
         {
             LogEntries.Add(entry);
             if (ShouldShowEntry(entry))
@@ -53,21 +53,21 @@ public partial class LogViewerViewModel : ViewModelBase
     {
         Dispatcher.UIThread.InvokeAsync(() =>
         {
-            LogEntries.Add(entry);
+            LogEntries.Insert(0, entry);
 
-            // Trim old entries
+            // Trim oldest entries (now at the tail)
             while (LogEntries.Count > MaxLogEntries)
             {
-                LogEntries.RemoveAt(0);
+                LogEntries.RemoveAt(LogEntries.Count - 1);
             }
 
             // Apply filter
             if (ShouldShowEntry(entry))
             {
-                FilteredLogEntries.Add(entry);
+                FilteredLogEntries.Insert(0, entry);
                 while (FilteredLogEntries.Count > MaxLogEntries)
                 {
-                    FilteredLogEntries.RemoveAt(0);
+                    FilteredLogEntries.RemoveAt(FilteredLogEntries.Count - 1);
                 }
             }
         });

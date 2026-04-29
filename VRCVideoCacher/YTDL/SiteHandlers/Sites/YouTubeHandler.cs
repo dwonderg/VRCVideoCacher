@@ -35,9 +35,12 @@ public class YouTubeHandler : ISiteHandler
 
         videoId = videoId.Length > 11 ? videoId[..11] : videoId;
 
+        // Persist a canonical single-video URL so history/buttons never link to a playlist.
+        var canonicalUrl = $"https://www.youtube.com/watch?v={videoId}";
+
         return Task.FromResult<VideoInfo?>(new VideoInfo
         {
-            VideoUrl = url,
+            VideoUrl = canonicalUrl,
             VideoId = videoId,
             UrlType = UrlType.YouTube,
             DownloadFormat = avPro ? DownloadFormat.Webm : DownloadFormat.MP4

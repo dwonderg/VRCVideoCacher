@@ -72,8 +72,13 @@
                                 <Button Command="{Binding WatchVideoCommand}" ToolTip.Tip="Watch Video" Padding="8">
                                     <mi:MaterialIcon Kind="Play" Width="18" Height="18" Foreground="#81C784"/>
                                 </Button>
-                                <Button Command="{Binding OpenOnYouTubeCommand}" ToolTip.Tip="Open on YouTube" Padding="8">
+                                <Button Command="{Binding OpenOnYouTubeCommand}" ToolTip.Tip="Open on YouTube" Padding="8"
+                                        IsVisible="{Binding IsYouTube}">
                                     <mi:MaterialIcon Kind="Youtube" Width="18" Height="18" Foreground="#FF0000"/>
+                                </Button>
+                                <Button Command="{Binding OpenSourceCommand}" ToolTip.Tip="Open Source URL" Padding="8"
+                                        IsVisible="{Binding HasOpenSourceLink}">
+                                    <mi:MaterialIcon Kind="OpenInNew" Width="18" Height="18"/>
                                 </Button>
                                 <Button Command="{Binding CopyUrlCommand}" ToolTip.Tip="Copy Local URL" Padding="8">
                                     <mi:MaterialIcon Kind="ContentCopy" Width="18" Height="18"/>

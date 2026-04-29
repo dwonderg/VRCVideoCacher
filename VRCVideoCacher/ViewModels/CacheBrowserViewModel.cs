@@ -3,6 +3,8 @@ using Avalonia.Threading;
 using CodingSeb.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VRCVideoCacher.Database;
+using VRCVideoCacher.Models;
 using VRCVideoCacher.Services;
 
 namespace VRCVideoCacher.ViewModels;
@@ -21,6 +23,27 @@ public partial class CacheItemViewModel : ViewModelBase
     [ObservableProperty]
     private string _thumbnailSource = string.Empty;
 
+    [ObservableProperty]
+    private UrlType _urlType = UrlType.Other;
+
+    [ObservableProperty]
+    private string? _originalUrl;
+
+    public bool IsYouTube => UrlType == UrlType.YouTube || (VideoId.Length == 11 && UrlType == UrlType.Other);
+
+    public bool HasOpenSourceLink => !IsYouTube && !string.IsNullOrEmpty(OriginalUrl);
+
+    partial void OnUrlTypeChanged(UrlType value)
+    {
+        OnPropertyChanged(nameof(IsYouTube));
+        OnPropertyChanged(nameof(HasOpenSourceLink));
+    }
+
+    partial void OnOriginalUrlChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasOpenSourceLink));
+    }
+
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? VideoId : Title;
 
     public string SizeFormatted => FormatSize(Size);
@@ -28,16 +51,24 @@ public partial class CacheItemViewModel : ViewModelBase
     // Event to notify parent when item is deleted
     public event Action<CacheItemViewModel>? OnDeleted;
 
-    public async Task LoadMetadataAsync()
+    public async Task LoadMetadataAsync(string? originalUrl = null)
     {
         // Load from DB
         var videoInfo = await YouTubeMetadataService.GetVideoMetadataAsync(VideoId);
 
-        if (!string.IsNullOrEmpty(videoInfo?.Title))
+        if (videoInfo != null)
         {
-            Title = videoInfo.Title;
-            OnPropertyChanged(nameof(DisplayTitle));
+            UrlType = videoInfo.Type;
+            if (!string.IsNullOrEmpty(videoInfo.Title))
+            {
+                Title = videoInfo.Title;
+                OnPropertyChanged(nameof(DisplayTitle));
+            }
         }
+
+        // Original URL for non-YouTube items so we can open the source stream/page.
+        // Prefer the caller-provided value (batch-fetched) to avoid an extra DB round-trip per item.
+        OriginalUrl = originalUrl ?? DatabaseManager.GetLatestHistoryUrl(VideoId);
 
         // Load thumbnail
         var thumbnailPath = ThumbnailManager.GetThumbnail(VideoId);
@@ -68,6 +99,18 @@ public partial class CacheItemViewModel : ViewModelBase
     private void OpenOnYouTube()
     {
         var url = $"https://www.youtube.com/watch?v={VideoId}";
+        OpenUrlExternal(url);
+    }
+
+    [RelayCommand]
+    private void OpenSource()
+    {
+        if (string.IsNullOrEmpty(OriginalUrl)) return;
+        OpenUrlExternal(OriginalUrl);
+    }
+
+    private static void OpenUrlExternal(string url)
+    {
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -197,9 +240,12 @@ public partial class CacheBrowserViewModel : ViewModelBase
         // Load metadata (titles + thumbnails) asynchronously in the background
         _ = Task.Run(async () =>
         {
+            // Batch-fetch original URLs in one query instead of N.
+            var urls = DatabaseManager.GetLatestHistoryUrls(itemsToLoad.Select(i => i.VideoId));
             foreach (var item in itemsToLoad)
             {
-                await item.LoadMetadataAsync();
+                urls.TryGetValue(item.VideoId, out var url);
+                await item.LoadMetadataAsync(url);
             }
         });
     }

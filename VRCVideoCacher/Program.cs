@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Threading;
 using Avalonia;
 using Sentry.Serilog;
 using Serilog;
@@ -37,6 +38,22 @@ internal sealed class Program
     public static readonly string UtilsPath = Path.Join(DataPath, "Utils");
     private static readonly string LogsPath = Path.Join(DataPath, "Logs");
     public static event Action? OnCookiesUpdated;
+    private const string SingleInstanceMutexName = @"Local\VRCVideoCacher_SingleInstance";
+    private static Mutex? _singleInstanceMutex;
+
+    private static bool TryAcquireSingleInstanceMutex()
+    {
+        _singleInstanceMutex = new Mutex(false, SingleInstanceMutexName);
+        try
+        {
+            return _singleInstanceMutex.WaitOne(0);
+        }
+        catch (AbandonedMutexException)
+        {
+            // Previous holder exited without releasing; we now own the mutex.
+            return true;
+        }
+    }
 
     private static void ConfigureSentryOptions(SentrySerilogOptions o)
     {
@@ -87,25 +104,40 @@ internal sealed class Program
 #endif
         LaunchArgs.SetupArguments(args);
         Updater.WaitForPreviousInstance();
-        var processes = Process.GetProcessesByName("VRCVideoCacher");
-        if (processes.Length > 1)
+
+        // Atomic single-instance guard. Held for the lifetime of this process so
+        // simultaneous launches (Steam + VRCX, etc.) can't both win the race.
+        if (!TryAcquireSingleInstanceMutex())
         {
             if (LaunchArgs.KillExistingInstance)
             {
-                foreach (var process in processes)
+                // Documented-as-destructive escape hatch; corrupts history when triggered by auto-launchers.
+                foreach (var process in Process.GetProcessesByName("VRCVideoCacher"))
                 {
-                    if (process.Id != Environment.ProcessId)
+                    if (process.Id == Environment.ProcessId)
                     {
-                        try
-                        {
-                            process.Kill();
-                            Logger.Information("Killed existing instance with PID {Pid} due to kill existing instance argument.", process.Id);
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Warning(ex, "Failed to kill existing instance with PID {Pid}. It may still be running.", process.Id);
-                        }
+                        process.Dispose();
+                        continue;
                     }
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit(5000);
+                        Logger.Information("Killed existing instance with PID {Pid} due to kill existing instance argument.", process.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning(ex, "Failed to kill existing instance with PID {Pid}.", process.Id);
+                    }
+                    process.Dispose();
+                }
+                // Re-acquire after the holder has fully exited and released its mutex handle.
+                _singleInstanceMutex?.Dispose();
+                _singleInstanceMutex = null;
+                if (!TryAcquireSingleInstanceMutex())
+                {
+                    Console.WriteLine("Could not acquire single-instance lock after kill. Exiting...");
+                    Environment.Exit(0);
                 }
             }
             else
@@ -114,8 +146,6 @@ internal sealed class Program
                 Environment.Exit(0);
             }
         }
-        foreach (var process in processes)
-            process.Dispose();
 
         Updater.Cleanup();
 

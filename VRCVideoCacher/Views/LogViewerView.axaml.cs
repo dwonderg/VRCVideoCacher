@@ -31,7 +31,7 @@ public partial class LogViewerView : UserControl
     {
         if (e.Property == IsVisibleProperty && e.NewValue is true)
         {
-            ScrollToBottom();
+            ScrollToTop();
         }
     }
 
@@ -39,15 +39,15 @@ public partial class LogViewerView : UserControl
     {
         if (DataContext is LogViewerViewModel { AutoScroll: true } && e.Action == NotifyCollectionChangedAction.Add)
         {
-            ScrollToBottom();
+            ScrollToTop();
         }
     }
 
-    private void ScrollToBottom()
+    private void ScrollToTop()
     {
         if (LogListBox.ItemCount > 0)
         {
-            LogListBox.ScrollIntoView(LogListBox.ItemCount - 1);
+            LogListBox.ScrollIntoView(0);
         }
     }
 
