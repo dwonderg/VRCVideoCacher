@@ -381,7 +381,7 @@ public class VideoDownloader
         var filePath = Path.Join(CacheManager.CachePath, fileName);
         if (File.Exists(filePath))
         {
-            Log.Error("File already exists, canceling...");
+            Log.Warning("File already exists, canceling...");
             try
             {
                 if (File.Exists(TempDownloadMp4Path)) File.Delete(TempDownloadMp4Path);
@@ -672,7 +672,7 @@ public class VideoDownloader
         var filePath = Path.Join(CacheManager.CachePath, fileName);
         if (File.Exists(filePath))
         {
-            Log.Error("File already exists, canceling...");
+            Log.Warning("File already exists, canceling...");
             try { if (File.Exists(TempDownloadMp4Path)) File.Delete(TempDownloadMp4Path); }
             catch (Exception ex) { Log.Error("Failed to delete temp file: {ex}", ex.ToString()); }
             return (false, "SkipReasonFileExists");

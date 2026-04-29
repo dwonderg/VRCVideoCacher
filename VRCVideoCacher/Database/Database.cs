@@ -10,11 +10,12 @@ public class Database : DbContext
 
     public DbSet<History> PlayHistory { get; set; }
     public DbSet<VideoInfoCache> VideoInfoCache { get; set; }
-    
+
     // Required for PooledDbContextFactory
     public Database(DbContextOptions<Database> options) : base(options) { }
     public DbSet<PendingDownload> PendingDownloads { get; set; }
     public DbSet<VideoWatchStats> VideoWatchStats { get; set; }
+    public DbSet<VRDancingTitle> VRDancingTitles { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -30,5 +31,6 @@ public class Database : DbContext
     {
         modelBuilder.Entity<PendingDownload>().ToTable("vvc_PendingDownloads");
         modelBuilder.Entity<VideoWatchStats>().ToTable("vvc_VideoWatchStats");
+        modelBuilder.Entity<VRDancingTitle>().ToTable("vvc_VRDancingTitles");
     }
 }

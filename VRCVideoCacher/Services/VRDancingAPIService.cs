@@ -26,6 +26,19 @@ public class VRDancingAPIService
 
     public static async Task DownloadMetadata(string code, string videoId)
     {
+        // Prefer the local sheet-backed table — covers entries the API doesn't return.
+        var sheet = DatabaseManager.GetVRDancingTitle(code);
+        if (sheet != null && (!string.IsNullOrEmpty(sheet.Song) || !string.IsNullOrEmpty(sheet.Artist)))
+        {
+            DatabaseManager.AddVideoInfoCache(new VideoInfoCache
+            {
+                Id = videoId,
+                Title = sheet.Song,
+                Author = sheet.Artist,
+                Type = UrlType.VRDancing
+            });
+        }
+
         try
         {
             var vrdData = await GetVideoInfo(code);

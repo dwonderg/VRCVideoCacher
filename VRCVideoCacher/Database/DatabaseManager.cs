@@ -46,6 +46,32 @@ public static class DatabaseManager
                 WatchCount INTEGER NOT NULL DEFAULT 0
             )
             """);
+
+        db.Database.ExecuteSqlRaw("""
+            CREATE TABLE IF NOT EXISTS vvc_VRDancingTitles (
+                Code TEXT PRIMARY KEY NOT NULL,
+                Song TEXT NOT NULL DEFAULT '',
+                Artist TEXT NOT NULL DEFAULT '',
+                Instructor TEXT NOT NULL DEFAULT ''
+            )
+            """);
+    }
+
+    public static VRDancingTitle? GetVRDancingTitle(string code)
+    {
+        if (string.IsNullOrEmpty(code)) return null;
+        using var db = _contextFactory.CreateDbContext();
+        return db.VRDancingTitles.AsNoTracking().FirstOrDefault(t => t.Code == code);
+    }
+
+    public static void ReplaceVRDancingTitles(IEnumerable<VRDancingTitle> rows)
+    {
+        using var db = _contextFactory.CreateDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.Database.ExecuteSqlRaw("DELETE FROM vvc_VRDancingTitles");
+        db.VRDancingTitles.AddRange(rows);
+        db.SaveChanges();
+        tx.Commit();
     }
 
     private const int MaxPlayHistoryRows = 2000;
