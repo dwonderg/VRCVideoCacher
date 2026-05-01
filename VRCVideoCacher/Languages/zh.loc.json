@@ -95,6 +95,10 @@
   "SkipReasonUnsupportedUrl": "不支持的 URL 类型",
   "SkipReasonFileExists": "已在缓存中",
   "SkipReasonFileNotFound": "未找到已下载的文件",
+  "SkipReasonFormatUnavailable": "没有符合所配置格式/分辨率的流",
+  "SkipReasonBotCheck": "YouTube 机器人验证 — 请安装浏览器扩展：github.com/clienthax/VRCVideoCacherBrowserExtension 并使用其他 YouTube 账户",
+  "SkipReasonVideoUnavailable": "视频不可用",
+  "SkipReasonPrivateVideo": "视频为私有",
 
   "LogViewer": "日志查看器",
   "ExportLogs": "导出日志",

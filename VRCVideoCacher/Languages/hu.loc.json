@@ -96,6 +96,10 @@
   "SkipReasonUnsupportedUrl": "Nem támogatott URL típus",
   "SkipReasonFileExists": "Már a gyorsítótárban van",
   "SkipReasonFileNotFound": "A letöltött fájl nem található",
+  "SkipReasonFormatUnavailable": "Nem található a beállított formátumhoz/felbontáshoz megfelelő stream",
+  "SkipReasonBotCheck": "YouTube bot-ellenőrzés — telepítse a böngészőbővítményt: github.com/clienthax/VRCVideoCacherBrowserExtension és használjon alternatív YouTube fiókot",
+  "SkipReasonVideoUnavailable": "A videó nem elérhető",
+  "SkipReasonPrivateVideo": "A videó privát",
 
   "LogViewer": "Napló Néző",
   "ExportLogs": "Napló Exportálás",

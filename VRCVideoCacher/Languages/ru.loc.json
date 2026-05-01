@@ -95,6 +95,10 @@
   "SkipReasonUnsupportedUrl": "Неподдерживаемый тип URL",
   "SkipReasonFileExists": "Уже в кэше",
   "SkipReasonFileNotFound": "Загруженный файл не найден",
+  "SkipReasonFormatUnavailable": "Нет подходящего потока для заданного формата/разрешения",
+  "SkipReasonBotCheck": "Проверка YouTube на бота — установите расширение: github.com/clienthax/VRCVideoCacherBrowserExtension и используйте альтернативный аккаунт YouTube",
+  "SkipReasonVideoUnavailable": "Видео недоступно",
+  "SkipReasonPrivateVideo": "Видео является приватным",
 
   "LogViewer": "Просмотр Логов",
   "ExportLogs": "Экспортировать Логи",

@@ -417,9 +417,30 @@ public class VideoDownloader
         if (_pauseRequested) return (false, null);
         if (process.ExitCode != 0)
         {
+            // Known non-fatal yt-dlp failures: log as Warning (no dialog popup) and
+            // return a clean skip reason for the status bar.
+            if (error.Contains("Requested format is not available", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warning("YouTube format unavailable for {VideoId} — no matching stream for the configured format/resolution. {Error}", videoId, error);
+                return (false, "SkipReasonFormatUnavailable");
+            }
+            if (error.Contains("Sign in to confirm you're not a bot", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warning("YouTube bot-check for {VideoId} — install VRCVideoCacherBrowserExtension to fix.", videoId);
+                return (false, "SkipReasonBotCheck");
+            }
+            if (error.Contains("Video unavailable", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warning("YouTube video unavailable: {VideoId}. {Error}", videoId, error);
+                return (false, "SkipReasonVideoUnavailable");
+            }
+            if (error.Contains("Private video", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warning("YouTube video is private: {VideoId}.", videoId);
+                return (false, "SkipReasonPrivateVideo");
+            }
+
             Log.Error("Failed to download YouTube Video: {exitCode} {URL} {error}", process.ExitCode, url, error);
-            if (error.Contains("Sign in to confirm you're not a bot"))
-                Log.Error("Fix this error by following these instructions: https://github.com/clienthax/VRCVideoCacherBrowserExtension");
             return (false, $"yt-dlp exited with code {process.ExitCode}");
         }
         Thread.Sleep(100);

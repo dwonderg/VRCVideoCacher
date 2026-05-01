@@ -100,6 +100,10 @@
   "SkipReasonUnsupportedUrl": "Unsupported URL type",
   "SkipReasonFileExists": "Already cached",
   "SkipReasonFileNotFound": "Downloaded file not found",
+  "SkipReasonFormatUnavailable": "No matching stream for the configured format/resolution",
+  "SkipReasonBotCheck": "YouTube bot-check — install the browser extension: github.com/clienthax/VRCVideoCacherBrowserExtension and use an alternative YouTube account",
+  "SkipReasonVideoUnavailable": "Video unavailable",
+  "SkipReasonPrivateVideo": "Video is private",
 
   "LogViewer": "Log Viewer",
   "ExportLogs": "Export Logs",
