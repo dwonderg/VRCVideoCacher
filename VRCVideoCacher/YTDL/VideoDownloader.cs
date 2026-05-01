@@ -366,11 +366,21 @@ public class VideoDownloader
         }
         else
         {
+            var maxRes = ConfigManager.Config.CacheYouTubeMaxResolution;
             var audioArgPotato = string.IsNullOrEmpty(ConfigManager.Config.YtdlpDubLanguage)
                 ? "+ba[ext=m4a]"
                 : $"+(ba[ext=m4a][language={ConfigManager.Config.YtdlpDubLanguage}]/ba[ext=m4a])";
             args.Add($"-o \"{tempMp4}\"");
-            args.Add($"-f \"bv*[height<=1080][vcodec~='^(avc|h264)']{audioArgPotato}/bv*[height<=1080][vcodec~='^av01'][dynamic_range='SDR']\"");
+            if (PlusConfigManager.Config.CacheYouTubePreferVp9)
+            {
+                // VP9+aac in mp4 — best compression, universal compatibility (20-50% smaller than h264)
+                args.Add($"-f \"bv*[height<={maxRes}][vcodec~='^vp9']{audioArgPotato}/bv*[height<={maxRes}][vcodec~='^(avc|h264)']{audioArgPotato}/bv*[height<={maxRes}][vcodec~='^av01'][dynamic_range='SDR']\"");
+            }
+            else
+            {
+                // h264+aac — fastest decode, widest hardware support
+                args.Add($"-f \"bv*[height<={maxRes}][vcodec~='^(avc|h264)']{audioArgPotato}/bv*[height<={maxRes}][vcodec~='^av01'][dynamic_range='SDR']\"");
+            }
             args.Add("--remux-video mp4");
         }
 

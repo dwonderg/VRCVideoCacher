@@ -66,6 +66,8 @@ public class PlusConfigManager
                 Config.CacheDownloadRateLimitMBs = Convert.ToInt32(rate);
             if (json.TryGetValue("CacheDownloadIdleSeconds", out var idle))
                 Config.CacheDownloadIdleSeconds = Convert.ToInt32(idle);
+            if (json.TryGetValue("CacheYouTubePreferVp9", out var vp9))
+                Config.CacheYouTubePreferVp9 = Convert.ToBoolean(vp9);
             Log.Information("Migrated Plus settings from main Config.json.");
         }
         catch (Exception ex)
@@ -92,4 +94,5 @@ public class PlusConfigModel
 {
     public int CacheDownloadRateLimitMBs { get; set; } // 0 = unlimited
     public int CacheDownloadIdleSeconds { get; set; } = 30; // 0 = disabled
+    public bool CacheYouTubePreferVp9 { get; set; } = true; // VP9+aac in mp4 instead of h264+aac
 }

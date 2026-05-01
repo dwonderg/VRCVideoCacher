@@ -9,6 +9,7 @@ publish/
 .vs/
 *.DotSettings*
 .claude/
+.letta/
 
 # Runtime files
 *.log

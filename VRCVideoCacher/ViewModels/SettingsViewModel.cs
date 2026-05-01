@@ -53,6 +53,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _cacheYouTubeMaxResolution;
 
+    [ObservableProperty]
+    private bool _cacheYouTubePreferVp9;
+
     // Resolution options for the dropdown
     public int[] ResolutionOptions { get; } = [720, 1080, 1440, 2160];
 
@@ -173,6 +176,7 @@ public partial class SettingsViewModel : ViewModelBase
         CacheHlsMaxLength = config.CacheHlsMaxLength;
         CacheOnly = config.CacheOnly;
         var plusConfig = PlusConfigManager.Config;
+        CacheYouTubePreferVp9 = plusConfig.CacheYouTubePreferVp9;
         IsDelayEnabled = plusConfig.CacheDownloadIdleSeconds > 0;
         CacheDownloadIdleSeconds = plusConfig.CacheDownloadIdleSeconds > 0 ? plusConfig.CacheDownloadIdleSeconds : 30;
         IsRateLimitEnabled = plusConfig.CacheDownloadRateLimitMBs > 0;
@@ -246,6 +250,7 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnCachedAssetPathChanged(string value) => SetHasChanges();
     partial void OnCacheYouTubeChanged(bool value) => SetHasChanges();
     partial void OnCacheYouTubeMaxResolutionChanged(int value) => SetHasChanges();
+    partial void OnCacheYouTubePreferVp9Changed(bool value) => SetHasChanges();
     partial void OnCacheYouTubeMaxLengthChanged(int value) => SetHasChanges();
     partial void OnCacheMaxSizeInGbChanged(float value) => SetHasChanges();
     partial void OnCachePyPyDanceChanged(bool value) => SetHasChanges();
@@ -293,6 +298,7 @@ public partial class SettingsViewModel : ViewModelBase
         var plusConfig = PlusConfigManager.Config;
         plusConfig.CacheDownloadIdleSeconds = IsDelayEnabled ? CacheDownloadIdleSeconds : 0;
         plusConfig.CacheDownloadRateLimitMBs = IsRateLimitEnabled ? CacheDownloadRateLimitMBs : 0;
+        plusConfig.CacheYouTubePreferVp9 = CacheYouTubePreferVp9;
         config.PatchResonite = PatchResonite;
         config.PatchVrChat = PatchVRC;
         config.CloseToTray = CloseToTray;

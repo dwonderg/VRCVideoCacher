@@ -115,6 +115,10 @@
                                 <ComboBox ItemsSource="{Binding ResolutionOptions}" SelectedItem="{Binding CacheYouTubeMaxResolution}"/>
                             </StackPanel>
 
+                            <CheckBox IsChecked="{Binding CacheYouTubePreferVp9}"
+                                      Content="{loc:Tr PreferVp9ForCache}"
+                                      ToolTip.Tip="{loc:Tr PreferVp9ForCacheTooltip}"/>
+
                             <StackPanel Spacing="5">
                                 <TextBlock Text="{loc:Tr MaxVideoLength}"/>
                                 <NumericUpDown Value="{Binding CacheYouTubeMaxLength}" Minimum="1" Increment="10"/>
