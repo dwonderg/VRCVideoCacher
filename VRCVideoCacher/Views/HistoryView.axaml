@@ -36,6 +36,8 @@
                                 <TextBlock Text="{Binding DisplayTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding Author}" FontSize="12" Foreground="#888888" Margin="0,2,0,0"
                                            IsVisible="{Binding HasAuthor}"/>
+                                <TextBlock Text="{Binding DisplayId}" FontSize="11" Foreground="#666666" Margin="0,2,0,0"
+                                           IsVisible="{Binding HasDisplayId}"/>
                                 <TextBlock Text="{Binding Timestamp, StringFormat={}{0:dd MMM yyyy HH:mm}}" FontSize="11" Foreground="#666666" Margin="0,2,0,0"/>
                             </StackPanel>
 
