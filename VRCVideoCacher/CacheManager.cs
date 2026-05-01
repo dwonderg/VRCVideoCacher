@@ -3,6 +3,7 @@ using Serilog;
 using VRCVideoCacher.Database;
 using VRCVideoCacher.Models;
 using VRCVideoCacher.Services;
+using VRCVideoCacher.YTDL;
 
 namespace VRCVideoCacher;
 
@@ -60,6 +61,28 @@ public class CacheManager
         foreach (var path in files)
         {
             var file = Path.GetFileName(path);
+
+            // Skip the downloader's per-videoId scratch files; the downloader sweeps these.
+            if (file.StartsWith("_tempVideo.", StringComparison.Ordinal))
+                continue;
+
+            // Self-heal: if a previous session committed a tiny error body or otherwise
+            // corrupt file into the cache, drop it so we re-download instead of serving
+            // 166-byte garbage to VRChat forever.
+            if (!VideoFileValidator.IsLikelyValidVideo(path))
+            {
+                try
+                {
+                    File.Delete(path);
+                    Log.Warning("Removed invalid cache entry on startup: {File}", file);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning("Failed to remove invalid cache entry {File}: {Err}", file, ex.Message);
+                }
+                continue;
+            }
+
             AddToCache(file);
         }
     }

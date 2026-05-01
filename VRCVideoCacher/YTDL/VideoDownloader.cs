@@ -14,12 +14,25 @@ public enum DownloadState { Idle, WaitingForIdle, Downloading, Paused }
 public class VideoDownloader
 {
     private static readonly ILogger Log = Program.Logger.ForContext<VideoDownloader>();
+    // Real browser UA — some CDNs gate raw-stream endpoints on UA and return an HTML
+    // stub for unknown clients, which then fails validation. Matches what AVPro/VRChat
+    // would look like to a permissive server.
+    private const string DownloadUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/124.0.0.0 Safari/537.36";
+
     private static readonly HttpClient HttpClient = new()
     {
-        DefaultRequestHeaders = { { "User-Agent", "VRCVideoCacher" } }
+        DefaultRequestHeaders = { { "User-Agent", DownloadUserAgent } }
     };
-    private static readonly string TempDownloadMp4Path;
-    private static readonly string TempDownloadWebmPath;
+
+    // Per-videoId temp paths so a leftover from one download can never be glued onto
+    // a different video's resume request. Format: _tempVideo.<videoId>.<ext>
+    private const string TempPrefix = "_tempVideo.";
+    private static string TempPathFor(string videoId, string ext) =>
+        Path.Join(CacheManager.CachePath, $"{TempPrefix}{videoId}.{ext}");
+    private static string TempMp4For(string videoId) => TempPathFor(videoId, "mp4");
+    private static string TempWebmFor(string videoId) => TempPathFor(videoId, "webm");
 
     // Events for UI
     public static event Action<VideoInfo>? OnDownloadStarted;
@@ -42,10 +55,25 @@ public class VideoDownloader
 
     static VideoDownloader()
     {
-        TempDownloadMp4Path = Path.Join(CacheManager.CachePath, "_tempVideo.mp4");
-        TempDownloadWebmPath = Path.Join(CacheManager.CachePath, "_tempVideo.webm");
+        SweepStaleTempFiles();
         ActiveStreamTracker.OnStreamingActivity += OnStreamingActivity;
         Task.Run(DownloadThread);
+    }
+
+    // On startup, wipe any leftover _tempVideo.* (including .part) from a prior crash.
+    // Resume across process restarts isn't worth the risk of cross-video glue-ups.
+    private static void SweepStaleTempFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(CacheManager.CachePath)) return;
+            foreach (var path in Directory.EnumerateFiles(CacheManager.CachePath, $"{TempPrefix}*"))
+            {
+                try { File.Delete(path); }
+                catch (Exception ex) { Log.Warning("Failed to remove stale temp {Path}: {Err}", path, ex.Message); }
+            }
+        }
+        catch (Exception ex) { Log.Warning("Stale temp sweep failed: {Err}", ex.Message); }
     }
 
     private static void OnStreamingActivity()
@@ -158,9 +186,15 @@ public class VideoDownloader
             string? failReason = null;
             try
             {
+                // VRDancing's mpegts-beta host serves HLS .m3u8 manifests, not raw MP4.
+                // Route those through yt-dlp's HLS path instead of raw HTTP GET.
+                var isVrdHls = queueItem.UrlType == UrlType.VRDancing
+                    && queueItem.VideoUrl.StartsWith("https://mpegts-beta.vrdancing.club", StringComparison.OrdinalIgnoreCase);
+
                 (success, failReason) = queueItem.UrlType switch
                 {
                     UrlType.YouTube => await DownloadYouTubeVideo(queueItem),
+                    UrlType.VRDancing when isVrdHls => await DownloadHlsVideo(queueItem),
                     UrlType.PyPyDance or UrlType.VRDancing => await DownloadVideoWithId(queueItem),
                     UrlType.Hls => await DownloadHlsVideo(queueItem),
                     _ => (false, "SkipReasonUnsupportedUrl")
@@ -287,16 +321,19 @@ public class VideoDownloader
         // Re-check after the yt-dlp metadata call — streaming may have started during it
         if (_pauseRequested) return (false, null);
 
+        var tempMp4 = TempMp4For(videoId);
+        var tempWebm = TempWebmFor(videoId);
+
         // Only delete completed temp files; .part files are preserved for -c to resume
-        if (File.Exists(TempDownloadMp4Path))
+        if (File.Exists(tempMp4))
         {
             Log.Warning("Temp file already exists, deleting...");
-            File.Delete(TempDownloadMp4Path);
+            File.Delete(tempMp4);
         }
-        if (File.Exists(TempDownloadWebmPath))
+        if (File.Exists(tempWebm))
         {
             Log.Warning("Temp file already exists, deleting...");
-            File.Delete(TempDownloadWebmPath);
+            File.Delete(tempWebm);
         }
 
         var args = new List<string> { "-c", "--newline", "--no-warnings" }; // -c resumes from .part file if killed, --newline for progress parsing
@@ -324,7 +361,7 @@ public class VideoDownloader
             var audioArg = string.IsNullOrEmpty(ConfigManager.Config.YtdlpDubLanguage)
                 ? "+ba[acodec=opus][ext=webm]"
                 : $"+(ba[acodec=opus][ext=webm][language={ConfigManager.Config.YtdlpDubLanguage}]/ba[acodec=opus][ext=webm])";
-            args.Add($"-o \"{TempDownloadWebmPath}\"");
+            args.Add($"-o \"{tempWebm}\"");
             args.Add($"-f \"bv*[height<={ConfigManager.Config.CacheYouTubeMaxResolution}][vcodec~='^av01'][ext=mp4][dynamic_range='SDR']{audioArg}/bv*[height<={ConfigManager.Config.CacheYouTubeMaxResolution}][vcodec~='vp9'][ext=webm][dynamic_range='SDR']{audioArg}\"");
         }
         else
@@ -332,7 +369,7 @@ public class VideoDownloader
             var audioArgPotato = string.IsNullOrEmpty(ConfigManager.Config.YtdlpDubLanguage)
                 ? "+ba[ext=m4a]"
                 : $"+(ba[ext=m4a][language={ConfigManager.Config.YtdlpDubLanguage}]/ba[ext=m4a])";
-            args.Add($"-o \"{TempDownloadMp4Path}\"");
+            args.Add($"-o \"{tempMp4}\"");
             args.Add($"-f \"bv*[height<=1080][vcodec~='^(avc|h264)']{audioArgPotato}/bv*[height<=1080][vcodec~='^av01'][dynamic_range='SDR']\"");
             args.Add("--remux-video mp4");
         }
@@ -382,25 +419,30 @@ public class VideoDownloader
         if (File.Exists(filePath))
         {
             Log.Warning("File already exists, canceling...");
-            try
-            {
-                if (File.Exists(TempDownloadMp4Path)) File.Delete(TempDownloadMp4Path);
-                if (File.Exists(TempDownloadWebmPath)) File.Delete(TempDownloadWebmPath);
-            }
-            catch (Exception ex) { Log.Error("Failed to delete temp file: {ex}", ex.ToString()); }
+            VideoFileValidator.TryDelete(tempMp4);
+            VideoFileValidator.TryDelete(tempWebm);
             return (false, "SkipReasonFileExists");
         }
 
-        if (File.Exists(TempDownloadMp4Path))
-            File.Move(TempDownloadMp4Path, filePath, overwrite: true);
-        else if (File.Exists(TempDownloadWebmPath))
-            File.Move(TempDownloadWebmPath, filePath, overwrite: true);
+        string sourceTemp;
+        if (File.Exists(tempMp4)) sourceTemp = tempMp4;
+        else if (File.Exists(tempWebm)) sourceTemp = tempWebm;
         else
         {
             Log.Error("Failed to download YouTube Video: {URL}", url);
             return (false, "SkipReasonFileNotFound");
         }
 
+        if (!VideoFileValidator.IsLikelyValidVideo(sourceTemp))
+        {
+            // Warning, not Error — the user-facing notification is the queue StatusMessage
+            // surfaced via OnDownloadCompleted. Log.Error here would pop a modal dialog.
+            Log.Warning("YouTube download for {VideoId} failed validation; discarding.", videoId);
+            VideoFileValidator.TryDelete(sourceTemp);
+            return (false, "SkipReasonInvalidDownload");
+        }
+
+        File.Move(sourceTemp, filePath, overwrite: true);
         CacheManager.AddToCache(fileName);
         Log.Information("YouTube Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
         return (true, null);
@@ -442,21 +484,6 @@ public class VideoDownloader
         }
     }
 
-    private static async Task CopyWithProgressAsync(Stream source, Stream destination, long totalBytes, CancellationToken ct)
-    {
-        var buffer = new byte[81920];
-        long totalBytesRead = 0;
-
-        int bytesRead;
-        while ((bytesRead = await source.ReadAsync(buffer, ct)) > 0)
-        {
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
-            totalBytesRead += bytesRead;
-
-            if (totalBytes > 0)
-                OnDownloadProgress?.Invoke((double)totalBytesRead / totalBytes * 100.0);
-        }
-    }
 
     private static async Task<(bool Success, string? FailReason)> DownloadVideoWithId(VideoInfo videoInfo)
     {
@@ -464,12 +491,14 @@ public class VideoDownloader
 
         Log.Information("Downloading Video: {URL}", videoInfo.VideoUrl);
         var url = videoInfo.VideoUrl;
+        var tempMp4 = TempMp4For(videoInfo.VideoId);
 
-        // Check for a partial download to resume via HTTP Range
+        // Check for a partial download to resume via HTTP Range. Per-videoId temp paths
+        // mean we can only ever resume our OWN partial — not bytes from a different video.
         long resumeFrom = 0;
-        if (File.Exists(TempDownloadMp4Path))
+        if (File.Exists(tempMp4))
         {
-            resumeFrom = new FileInfo(TempDownloadMp4Path).Length;
+            resumeFrom = new FileInfo(tempMp4).Length;
             if (resumeFrom > 0)
                 Log.Information("Resuming direct download from byte {Offset}.", resumeFrom);
         }
@@ -486,8 +515,12 @@ public class VideoDownloader
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            
+            // Add headers that some CDNs expect to avoid rate limiting / auth checks
+            request.Headers.Add("Accept", "video/*");
             if (resumeFrom > 0)
                 request.Headers.Range = new RangeHeaderValue(resumeFrom, null);
+            
             response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
         }
         catch (OperationCanceledException) { return (false, null); }
@@ -497,47 +530,46 @@ public class VideoDownloader
             return (false, "network error");
         }
 
-        if (response.StatusCode == HttpStatusCode.Redirect)
-        {
-            url = response.Headers.Location?.ToString();
-            response.Dispose();
-            try
-            {
-                using var req2 = new HttpRequestMessage(HttpMethod.Get, url);
-                if (resumeFrom > 0)
-                    req2.Headers.Range = new RangeHeaderValue(resumeFrom, null);
-                response = await HttpClient.SendAsync(req2, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-            }
-            catch (OperationCanceledException) { return (false, null); }
-            catch (HttpRequestException ex)
-            {
-                Log.Error(ex, "Failed to follow redirect for {URL}", url);
-                return (false, "network error");
-            }
-        }
+        // HttpClient follows redirects automatically by default; manual handling is unnecessary.
 
         // 416 = server says our range is beyond the file — treat as already complete
+        long expectedTotalBytes = 0;
+        string? responseContentType = null;
         if (response.StatusCode != HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             if (!response.IsSuccessStatusCode && response.StatusCode != HttpStatusCode.PartialContent)
             {
-                Log.Error("Failed to download video: {URL} {Status}", url, response.StatusCode);
+                Log.Warning("Failed to download video: {URL} {Status}", url, response.StatusCode);
                 response.Dispose();
                 return (false, $"HTTP {(int)response.StatusCode}");
             }
+
+            // Reject obvious non-video bodies (HTML error pages, JSON errors served as 200, etc.)
+            // before they ever hit disk. The magic-byte check after download catches the rest.
+            responseContentType = response.Content.Headers.ContentType?.MediaType;
+            if (!VideoFileValidator.IsAcceptableContentType(responseContentType))
+            {
+                Log.Warning("Skipping cache for {URL}: unexpected Content-Type {Ct}", url, responseContentType);
+                response.Dispose();
+                VideoFileValidator.TryDelete(tempMp4);
+                return (false, $"unexpected content-type {responseContentType}");
+            }
+
+            var contentLength = response.Content.Headers.ContentLength ?? 0;
+            if (contentLength > 0)
+                expectedTotalBytes = resumeFrom + contentLength;
 
             try
             {
                 await using var stream = await response.Content.ReadAsStreamAsync(cts.Token);
                 var fileMode = resumeFrom > 0 ? FileMode.Append : FileMode.Create;
-                await using var fileStream = new FileStream(TempDownloadMp4Path, fileMode, FileAccess.Write, FileShare.None);
+                await using var fileStream = new FileStream(tempMp4, fileMode, FileAccess.Write, FileShare.None);
 
-                var totalBytes = (response.Content.Headers.ContentLength ?? 0) + resumeFrom;
                 var rateLimitMBs = PlusConfigManager.Config.CacheDownloadRateLimitMBs;
                 if (rateLimitMBs > 0)
-                    await ThrottledCopyAsync(stream, fileStream, rateLimitMBs * 1024L * 1024L, totalBytes, cts.Token);
+                    await ThrottledCopyAsync(stream, fileStream, rateLimitMBs * 1024L * 1024L, expectedTotalBytes, cts.Token);
                 else
-                    await CopyWithProgressAsync(stream, fileStream, totalBytes, cts.Token);
+                    await stream.CopyToAsync(fileStream, cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -547,13 +579,13 @@ public class VideoDownloader
             catch (IOException ex)
             {
                 response.Dispose();
-                Log.Error(ex, "Download stream failed for {URL}", url);
+                Log.Warning("Download stream failed for {URL}: {Err}", url, ex.Message);
                 return (false, "network error");
             }
             catch (HttpRequestException ex)
             {
                 response.Dispose();
-                Log.Error(ex, "Download stream failed for {URL}", url);
+                Log.Warning("Download stream failed for {URL}: {Err}", url, ex.Message);
                 return (false, "network error");
             }
         }
@@ -563,25 +595,50 @@ public class VideoDownloader
 
         var fileName = $"{videoInfo.VideoId}.{videoInfo.DownloadFormat.ToString().ToLower()}";
         var filePath = Path.Join(CacheManager.CachePath, fileName);
-        if (File.Exists(TempDownloadMp4Path))
-        {
-            File.Move(TempDownloadMp4Path, filePath, overwrite: true);
-        }
-        else if (File.Exists(TempDownloadWebmPath))
-        {
-            File.Move(TempDownloadWebmPath, filePath, overwrite: true);
-        }
-        else
+        if (!File.Exists(tempMp4))
         {
             Log.Error("Failed to download Video: {URL}", url);
             return (false, "SkipReasonFileNotFound");
         }
 
+        // If the server told us how big the body should be, enforce it. Catches the case
+        // where the connection drops mid-stream after enough bytes were written to fool
+        // the size+magic-byte check (e.g. several MB of MPEG-TS that happens to start
+        // with 0x47, but ends mid-frame). Skip when expected size is unknown — many
+        // mpegts endpoints omit Content-Length and we don't want to refuse those.
+        if (expectedTotalBytes > 0)
+        {
+            var actual = new FileInfo(tempMp4).Length;
+            if (actual < expectedTotalBytes)
+            {
+                Log.Warning("Download for {VideoId} truncated: {Got}/{Expected} bytes; discarding.",
+                    videoInfo.VideoId, actual, expectedTotalBytes);
+                VideoFileValidator.TryDelete(tempMp4);
+                return (false, "SkipReasonTruncated");
+            }
+        }
+
+        // If the body turned out to be an HLS manifest (Content-Type lied or wasn't set),
+        // fall back to the HLS download path instead of discarding — the URL is still valid.
+        if (VideoFileValidator.LooksLikeHlsManifest(tempMp4, responseContentType))
+        {
+            Log.Information("Detected HLS manifest at {URL}; switching to HLS download path.", url);
+            VideoFileValidator.TryDelete(tempMp4);
+            return await DownloadHlsVideo(videoInfo);
+        }
+
+        if (!VideoFileValidator.IsLikelyValidVideo(tempMp4, responseContentType))
+        {
+            Log.Warning("Download for {VideoId} ({URL}) failed validation; discarding.", videoInfo.VideoId, url);
+            VideoFileValidator.TryDelete(tempMp4);
+            return (false, "SkipReasonInvalidDownload");
+        }
+
+        File.Move(tempMp4, filePath, overwrite: true);
         CacheManager.AddToCache(fileName);
         Log.Information("Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
         return (true, null);
     }
-
     /// <summary>
     /// Downloads a finished HLS playlist by letting yt-dlp's generic extractor pull all
     /// segments and remux them into a single MP4 via the bundled ffmpeg. Honors the
@@ -591,16 +648,17 @@ public class VideoDownloader
     {
         if (_pauseRequested) return (false, null);
 
-        if (File.Exists(TempDownloadMp4Path))
+        var tempMp4 = TempMp4For(videoInfo.VideoId);
+        if (File.Exists(tempMp4))
         {
             Log.Warning("Temp file already exists, deleting...");
-            File.Delete(TempDownloadMp4Path);
+            File.Delete(tempMp4);
         }
 
         var args = new List<string>
         {
             "--newline",
-            $"-o \"{TempDownloadMp4Path}\"",
+            $"-o \"{tempMp4}\"",
             "--remux-video mp4",
             // Let yt-dlp pick native vs. ffmpeg HLS downloader — native chokes on
             // fMP4/CMAF (#EXT-X-MAP) playlists, ffmpeg handles those.
@@ -626,7 +684,7 @@ public class VideoDownloader
                 CreateNoWindow = true,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
-            }
+            },
         };
 
         process.StartInfo.Arguments = YtdlManager.GenerateYtdlArgs(args, $"\"{videoInfo.VideoUrl}\"");
@@ -673,18 +731,24 @@ public class VideoDownloader
         if (File.Exists(filePath))
         {
             Log.Warning("File already exists, canceling...");
-            try { if (File.Exists(TempDownloadMp4Path)) File.Delete(TempDownloadMp4Path); }
-            catch (Exception ex) { Log.Error("Failed to delete temp file: {ex}", ex.ToString()); }
+            VideoFileValidator.TryDelete(tempMp4);
             return (false, "SkipReasonFileExists");
         }
 
-        if (!File.Exists(TempDownloadMp4Path))
+        if (!File.Exists(tempMp4))
         {
             Log.Error("HLS download produced no output file: {URL}", videoInfo.VideoUrl);
             return (false, "SkipReasonFileNotFound");
         }
 
-        File.Move(TempDownloadMp4Path, filePath, overwrite: true);
+        if (!VideoFileValidator.IsLikelyValidVideo(tempMp4))
+        {
+            Log.Warning("HLS download for {VideoId} failed validation; discarding.", videoInfo.VideoId);
+            VideoFileValidator.TryDelete(tempMp4);
+            return (false, "SkipReasonInvalidDownload");
+        }
+
+        File.Move(tempMp4, filePath, overwrite: true);
         CacheManager.AddToCache(fileName);
         Log.Information("HLS Video Downloaded: {URL}", $"{ConfigManager.Config.YtdlpWebServerUrl}/{fileName}");
 

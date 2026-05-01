@@ -28,7 +28,25 @@ public class ApiController : WebApiController
     [Route(HttpVerbs.Post, "/youtube-cookies")]
     public async Task ReceiveYoutubeCookies()
     {
-        HttpContext.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+        // Permissive CORS for VRChat and Resonite video cacher
+        // Allows localhost (dev), major platforms, and common CDNs
+        var allowedOrigins = new[]
+        {
+            "http://localhost",           // Local development
+            "https://vrchat.com",        // VRChat main site
+            "https://api.vrchat.com",    // VRChat API
+            "https://www.resonite.com",  // Resonite main site
+            "https://resonite.io",       // Resonite alternative domain
+            "https://*.vrchatcdn.com",   // VRChat CDN (wildcard)
+            "https://*.cloudfront.net",  // Common CDNs used by both platforms
+            "https://*.akamaiedge.net",  // Akamai CDN for video delivery
+        };
+
+        foreach (var origin in allowedOrigins)
+        {
+            HttpContext.Response.Headers.Add("Access-Control-Allow-Origin", origin);
+        }
+
         using var reader = new StreamReader(HttpContext.OpenRequestStream(), Encoding.UTF8);
         var cookies = await reader.ReadToEndAsync();
         cookies = FilterCookies(cookies);
@@ -294,14 +312,27 @@ public class ApiController : WebApiController
         var ext = avPro ? "webm" : "mp4";
         var fileName = $"{videoId}.{ext}";
         var filePath = Path.Join(CacheManager.CachePath, fileName);
-        var isCached = File.Exists(filePath);
+        var isCached = File.Exists(filePath) && EnsureValidOrEvict(filePath, fileName);
         if (avPro && !isCached)
         {
             // retry with .mp4
             fileName = $"{videoId}.mp4";
             filePath = Path.Join(CacheManager.CachePath, fileName);
-            isCached = File.Exists(filePath);
+            isCached = File.Exists(filePath) && EnsureValidOrEvict(filePath, fileName);
         }
         return (isCached, filePath, fileName);
+    }
+
+    // If a cache file fails sanity checks (size/magic), drop it so the next play
+    // re-resolves and re-downloads instead of serving the same broken bytes forever.
+    private static bool EnsureValidOrEvict(string filePath, string fileName)
+    {
+        if (VideoFileValidator.IsLikelyValidVideo(filePath))
+            return true;
+
+        Log.Warning("Evicting invalid cache entry {File} on read.", fileName);
+        try { CacheManager.DeleteCacheItem(fileName); }
+        catch (Exception ex) { Log.Warning("Failed to evict {File}: {Err}", fileName, ex.Message); }
+        return false;
     }
 }
