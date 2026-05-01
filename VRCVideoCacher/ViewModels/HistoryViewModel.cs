@@ -32,6 +32,22 @@ public partial class HistoryItemViewModel : ViewModelBase
         }
     }
 
+    // Surface the human-readable id for VRDancing rows (the numerical code in the URL)
+    // instead of the URL hash; for YouTube show the 11-char id, otherwise fall through
+    // to the stored Id.
+    public string? DisplayId => Type == UrlType.VRDancing && !string.IsNullOrEmpty(Url)
+        ? ExtractVRDancingCode(Url)
+        : Id;
+
+    public bool HasDisplayId => !string.IsNullOrEmpty(DisplayId);
+
+    private static string ExtractVRDancingCode(string url)
+    {
+        var trimmed = url.TrimEnd('/');
+        var idx = trimmed.LastIndexOf('/');
+        return idx >= 0 && idx < trimmed.Length - 1 ? trimmed[(idx + 1)..] : trimmed;
+    }
+
     public string TypeBadge => Type switch
     {
         UrlType.YouTube => "YouTube",

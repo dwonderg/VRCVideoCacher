@@ -56,7 +56,7 @@
                             <!-- Video Info -->
                             <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding DisplayTitle}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="400"/>
-                                <TextBlock Text="{Binding VideoId}" FontSize="12" Foreground="#888888" Margin="0,4,0,0"/>
+                                <TextBlock Text="{Binding DisplayId}" FontSize="12" Foreground="#888888" Margin="0,4,0,0"/>
                                 <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2,0,0">
                                     <TextBlock Text="{Binding Extension}" FontSize="11" Foreground="#666666"/>
                                     <TextBlock Text="{Binding SizeFormatted}" FontSize="11" Foreground="#64B5F6"/>
@@ -80,7 +80,8 @@
                                         IsVisible="{Binding HasOpenSourceLink}">
                                     <mi:MaterialIcon Kind="OpenInNew" Width="18" Height="18"/>
                                 </Button>
-                                <Button Command="{Binding CopyUrlCommand}" ToolTip.Tip="Copy Local URL" Padding="8">
+                                <Button Command="{Binding CopyUrlCommand}" ToolTip.Tip="Copy URL" Padding="8"
+                                        IsVisible="{Binding HasCopyableUrl}">
                                     <mi:MaterialIcon Kind="ContentCopy" Width="18" Height="18"/>
                                 </Button>
                                 <Button Command="{Binding DeleteCommand}" ToolTip.Tip="Delete" Padding="8" Background="#CF6679">

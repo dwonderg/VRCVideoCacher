@@ -33,18 +33,36 @@ public partial class CacheItemViewModel : ViewModelBase
 
     public bool HasOpenSourceLink => !IsYouTube && !string.IsNullOrEmpty(OriginalUrl);
 
+    // For VRDancing the VideoId is a URL hash and unhelpful in the UI; show the
+    // human-readable code from the source URL (e.g. 13451) instead. Other types
+    // (YouTube id, etc.) keep their VideoId as-is.
+    public string DisplayId => UrlType == UrlType.VRDancing && !string.IsNullOrEmpty(OriginalUrl)
+        ? ExtractVRDancingCode(OriginalUrl!)
+        : VideoId;
+
+    private static string ExtractVRDancingCode(string url)
+    {
+        var trimmed = url.TrimEnd('/');
+        var idx = trimmed.LastIndexOf('/');
+        return idx >= 0 && idx < trimmed.Length - 1 ? trimmed[(idx + 1)..] : trimmed;
+    }
+
     partial void OnUrlTypeChanged(UrlType value)
     {
         OnPropertyChanged(nameof(IsYouTube));
         OnPropertyChanged(nameof(HasOpenSourceLink));
+        OnPropertyChanged(nameof(HasCopyableUrl));
+        OnPropertyChanged(nameof(DisplayId));
     }
 
     partial void OnOriginalUrlChanged(string? value)
     {
         OnPropertyChanged(nameof(HasOpenSourceLink));
+        OnPropertyChanged(nameof(HasCopyableUrl));
+        OnPropertyChanged(nameof(DisplayId));
     }
 
-    public string DisplayTitle => string.IsNullOrEmpty(Title) ? VideoId : Title;
+    public string DisplayTitle => string.IsNullOrEmpty(Title) ? DisplayId : Title;
 
     public string SizeFormatted => FormatSize(Size);
 
@@ -127,10 +145,15 @@ public partial class CacheItemViewModel : ViewModelBase
         catch { /* Ignore errors */ }
     }
 
+    public bool HasCopyableUrl => IsYouTube || !string.IsNullOrEmpty(OriginalUrl);
+
     [RelayCommand]
     private async Task CopyUrl()
     {
-        var url = $"{ConfigManager.Config.YtdlpWebServerUrl}/{FileName}";
+        var url = IsYouTube
+            ? $"https://www.youtube.com/watch?v={VideoId}"
+            : OriginalUrl;
+        if (string.IsNullOrEmpty(url)) return;
         if (Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop)
         {
             var clipboard = desktop.MainWindow?.Clipboard;
@@ -197,7 +220,9 @@ public partial class CacheBrowserViewModel : ViewModelBase
         {
             if (string.IsNullOrEmpty(filter) ||
                 video.FileName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                video.VideoId.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                video.VideoId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                video.DisplayId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                video.DisplayTitle.Contains(filter, StringComparison.OrdinalIgnoreCase))
             {
                 FilteredVideos.Add(video);
             }
